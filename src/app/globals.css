@@ -1,0 +1,90 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+  }
+
+  body {
+    @apply bg-slate-50 text-slate-900 antialiased selection:bg-purple-200 selection:text-purple-900;
+  }
+}
+
+@layer utilities {
+  /* 1. ANIMAÇÕES ORGÂNICAS (BLOBS) */
+  /* Movimento mais fluido e menos previsível para as bolhas de fundo */
+  .animate-blob {
+    animation: blob 10s infinite cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  
+  .animation-delay-2000 {
+    animation-delay: 2s;
+  }
+  
+  .animation-delay-4000 {
+    animation-delay: 4s;
+  }
+
+  /* 2. ANIMAÇÃO DE GRADIENTE (Efeito "Mágico" nos Botões) */
+  /* Faz o gradiente do botão 'dançar' suavemente no hover */
+  .animate-gradient-x {
+    background-size: 200% 200%;
+    animation: gradient-x 5s ease infinite;
+  }
+
+  /* 3. TEXTURA DE RUÍDO (LOOK PREMIUM) */
+  /* Remove o aspecto 'plástico' do fundo digital */
+  .bg-noise {
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+    opacity: 0.05;
+    pointer-events: none;
+  }
+}
+
+/* 4. KEYFRAMES CUSTOMIZADOS */
+@keyframes blob {
+  0% { transform: translate(0px, 0px) scale(1); }
+  33% { transform: translate(40px, -60px) scale(1.15); }
+  66% { transform: translate(-30px, 30px) scale(0.9); }
+  100% { transform: translate(0px, 0px) scale(1); }
+}
+
+@keyframes gradient-x {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+/* 5. GLASSMORPHISM AVANÇADO */
+/* Painel principal com efeito de vidro fosco e saturação de cor */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.65);
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.04);
+}
+
+/* Variante mais leve para cards de resultado */
+.glass-card {
+  background: rgba(255, 255, 255, 0.4);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  @apply transition-all duration-300 hover:bg-white/60 hover:shadow-xl hover:shadow-purple-500/5;
+}
+
+/* 6. SCROLLBAR MODERNA (Estilo Minimalista) */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-slate-200 rounded-full border-4 border-transparent bg-clip-content hover:bg-slate-300 transition-colors;
+}

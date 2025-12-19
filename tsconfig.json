@@ -1,0 +1,65 @@
+// tsconfig.json
+{
+  "compilerOptions": {
+    /* Base Options para Next.js App Router */
+    "target": "es2020", /* Especifica a versão alvo do ECMAScript. */
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "esnext"
+    ], /* Bibliotecas de ambiente disponíveis. */
+    "allowJs": true, /* Permite que o TypeScript compile arquivos JavaScript. */
+    "skipLibCheck": true, /* Ignora verificações de tipo em arquivos de declaração (.d.ts) de bibliotecas. */
+    "strict": true, /* Habilita todas as opções estritas de verificação de tipo (melhor prática!). */
+    "forceConsistentCasingInFileNames": true, /* Garante que as referências a arquivos tenham maiúsculas e minúsculas consistentes. */
+    "noEmit": true, /* Não emite arquivos JavaScript de saída (o Next.js lida com isso). */
+    "esModuleInterop": true, /* Permite interoperabilidade com módulos CommonJS e ES. */
+    "module": "esnext", /* Define o sistema de módulos (ES modules). */
+    "moduleResolution": "node", /* Define a estratégia de resolução de módulos. */
+    "resolveJsonModule": true, /* Permite importar módulos que terminam em .json. */
+    "isolatedModules": true, /* Garante que cada arquivo possa ser transpilado isoladamente. */
+    "jsx": "react-jsx", /* Mantém o JSX para ser processado pelo Next.js (Babel/SWC). */
+    "incremental": true, /* Habilita compilações incrementais. *//* Mapeamento de Caminhos (Aliases) para Importações Limpas (Muito importante) */
+    "baseUrl": ".", /* Base para a resolução de módulos. */
+    "paths": {
+      "@/components/*": [
+        "src/components/*"
+      ],
+      "@/lib/*": [
+        "src/lib/*"
+      ],
+      "@/app/*": [
+        "src/app/*"
+      ],
+      "@/types/*": [
+        "src/types/*"
+      ] /* Importar tipos globais/interfaces */
+    },
+    /* Configurações Avançadas de Qualidade de Código */
+    "noUnusedLocals": false, /* Relata erros para variáveis locais não utilizadas. */
+    "noUnusedParameters": true, /* Relata erros para parâmetros de função não utilizados. */
+    "noImplicitReturns": true, /* Garante que todas as rotas de código de função retornem um valor. */
+    "noFallthroughCasesInSwitch": true, /* Garante que não haja casos de switch sem 'break'. */
+    "allowUnusedLabels": false, /* Não permite labels não utilizados. */
+    "allowUnreachableCode": false, /* Não permite código inalcançável. *//* Configuração para o App Router do Next.js */
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ]
+  },
+  /* Arquivos a serem incluídos no projeto */
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    "**/*.js",
+    "**/*.jsx",
+    ".next/types/**/*.ts",
+    ".next/dev/types/**/*.ts"
+  ],
+  /* Arquivos a serem excluídos do projeto */
+  "exclude": [
+    "node_modules"
+  ]
+}
