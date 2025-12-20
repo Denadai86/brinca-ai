@@ -9,8 +9,5 @@ const nextConfig = {
     ignoreBuildErrors: true,
   },
   // Configuração específica do React Compiler se quiser desativar a trava
-  experimental: {
-    reactCompiler: true, // Garante que está ativo, mas corrija o código acima primeiro
-  }
 };
 export default nextConfig;

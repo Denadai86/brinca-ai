@@ -1,58 +1,50 @@
+//src/components/AnimatedHeader.tsx
+
 "use client";
 
 import Image from "next/image";
 import { useState, useEffect, useCallback } from "react";
+import { SupporterBadge } from "@/components/SupporterBadge";
+import { useAuth } from "@/auth/AuthProvider";
+import { LogIn, LogOut } from "lucide-react";
 
 // Defina o limite de rolagem após o qual o header deve diminuir
-const SCROLL_THRESHOLD = 50; // 50 pixels de rolagem
+const SCROLL_THRESHOLD = 50;
 
-// Altura do logo:
-// 'default': Classes de altura do logo
-// 'scrolled': Classes de altura do logo após a rolagem
+// Altura do logo
 const logoSize = {
   default: "w-12 h-12 md:w-16 md:h-16",
   scrolled: "w-10 h-10 md:w-12 md:h-12",
 };
 
-// Padding vertical do header:
-// 'default': Padding vertical inicial
-// 'scrolled': Padding vertical reduzido
+// Padding vertical do header
 const headerPadding = {
-  default: "py-4", // Ex: `py-4`
-  scrolled: "py-2", // Ex: `py-2`
+  default: "py-4",
+  scrolled: "py-2",
 };
 
 export function AnimatedHeader() {
+  // 🔐 AUTH AQUI DENTRO (local correto)
+  const { user, login, logout, loading } = useAuth();
+
   // Estado para controlar se o usuário rolou o suficiente
   const [isScrolled, setIsScrolled] = useState(false);
 
-  // Função para lidar com o evento de rolagem, usando useCallback para otimização
   const handleScroll = useCallback(() => {
-    // Verifica se a posição de rolagem vertical (scrollY)
-    // ultrapassou o limite SCROLL_THRESHOLD
     const currentScrollPos = window.scrollY;
 
-    // Atualiza o estado apenas se houver uma mudança de status
     if (currentScrollPos > SCROLL_THRESHOLD && !isScrolled) {
       setIsScrolled(true);
     } else if (currentScrollPos <= SCROLL_THRESHOLD && isScrolled) {
       setIsScrolled(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isScrolled]); // Dependência em 'isScrolled' para garantir a lógica de transição
+  }, [isScrolled]);
 
-  // Hook para anexar o listener de rolagem ao window
   useEffect(() => {
     window.addEventListener("scroll", handleScroll);
-
-    // Função de limpeza para remover o listener quando o componente for desmontado
-    return () => {
-      window.removeEventListener("scroll", handleScroll);
-    };
+    return () => window.removeEventListener("scroll", handleScroll);
   }, [handleScroll]);
 
-  // Classes dinâmicas para a animação
-  // 'transition-all duration-300' garante a suavidade do efeito.
   const headerClasses = `
     bg-white/90 backdrop-blur-md shadow-lg border-b border-purple-200 sticky top-0 z-50
     transition-all duration-300 ease-in-out
@@ -78,14 +70,13 @@ export function AnimatedHeader() {
 
   return (
     <header className={headerClasses}>
-      <div className="max-w-6xl mx-auto px-6 flex items-center justify-center md:justify-between">
-        {/* --- Bloco do Logo e Título --- */}
+      <div className="max-w-6xl mx-auto px-6 flex items-center justify-between">
+        {/* Logo + título */}
         <div className="flex items-center gap-4">
           <div className={logoContainerClasses}>
             <Image
               src="/android-chrome-192x192.png"
               alt="Brinca-AI"
-              // O tamanho deve ser grande o suficiente para o maior estado (default)
               width={64}
               height={64}
               className="object-cover w-full h-full"
@@ -96,9 +87,34 @@ export function AnimatedHeader() {
             <p className={subtitleClasses}>brincadeiras mágicas com IA</p>
           </div>
         </div>
-        {/* --- Bloco do Subdomínio (Fixo) --- */}
-        <div className="hidden md:block text-purple-700 font-medium text-sm">
-          acaoleve.com
+
+        {/* Direita: badge + auth + domínio */}
+        <div className="hidden md:flex items-center gap-3">
+          {user && <SupporterBadge isCompact={isScrolled} />}
+
+          {!loading && !user && (
+            <button
+              onClick={login}
+              className="flex items-center gap-2 rounded-full bg-purple-600 px-4 py-2 text-sm font-bold text-white hover:bg-purple-700 transition"
+            >
+              <LogIn size={16} />
+              Entrar
+            </button>
+          )}
+
+          {!loading && user && (
+            <button
+              onClick={logout}
+              className="flex items-center gap-2 rounded-full bg-slate-200 px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-300 transition"
+            >
+              <LogOut size={16} />
+              Sair
+            </button>
+          )}
+
+          <span className="text-purple-700 font-medium text-sm">
+            acaoleve.com
+          </span>
         </div>
       </div>
     </header>

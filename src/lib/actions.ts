@@ -28,7 +28,6 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
  * @param formData - Dados enviados do formulário.
  */
 export async function generateActivities(
-  _prevState: FormState,
   formData: FormData
 ): Promise<FormState> {
   try {
