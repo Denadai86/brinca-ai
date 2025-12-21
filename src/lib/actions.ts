@@ -12,21 +12,15 @@ const ActivitySchema = z.object({
   tipoIdade: z.enum(["idade", "serie"]),
 });
 
-// Tipagem do retorno para uso no useFormState
 export type FormState = {
   success: boolean;
-  data?: string; // O texto gerado pela IA (sucesso)
-  error?: string; // Mensagem de erro (validação ou servidor)
+  data?: string;
+  error?: string;
 };
 
 // 2. INSTANCIAÇÃO DA IA
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 
-/**
- * Server Action para gerar atividades lúdicas.
- * @param prevState - Estado anterior do formulário.
- * @param formData - Dados enviados do formulário.
- */
 export async function generateActivities(
   formData: FormData
 ): Promise<FormState> {
@@ -42,56 +36,60 @@ export async function generateActivities(
     const validation = ActivitySchema.safeParse(rawData);
 
     if (!validation.success) {
-      // Retorna o primeiro erro de validação (melhor UX)
       const errorMsg = validation.error.issues[0].message;
       return { success: false, error: errorMsg };
     }
 
     const { idade, tema, materiais, tipoIdade } = validation.data;
-    const formattedIdade = `${idade} (${
-      tipoIdade === "idade" ? "anos" : "série"
-    })`;
+    const formattedIdade = `${idade} (${tipoIdade === "idade" ? "anos" : "série/ciclo"})`;
 
-    // 4. PROMPT DA IA (Mesma lógica robusta)
+    // 4. CONFIGURAÇÃO DO MODELO
+    // Utilizando gemini-1.5-flash para velocidade e custo-benefício em micro-SaaS
     const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
+    const prompt = `
+ATUE COMO: Uma pedagoga sênior especialista em Educação Infantil e Ensino Fundamental I, com foco em aprendizagem lúdica e afetiva.
 
-
-   const prompt = `
-ATUE COMO: Uma pedagoga especialista em Educação Infantil, segura, ética e criativa.
-
-SUA TAREFA: Criar 2 atividades lúdicas para crianças de ${formattedIdade}, com o tema "${tema}".
+SUA TAREFA: Criar exatamente 2 atividades pedagógicas originais para crianças de ${formattedIdade}, com o tema "${tema}".
 
 REGRAS CRÍTICAS DE SEGURANÇA (SYSTEM SAFETY):
-1. Se o tema "${tema}" for desrespeitoso, violento, sexual (+18), político, religioso extremista ou inadequado para crianças, IGNORE O TEMA solicitado.
-2. Nesse caso de bloqueio, gere atividades genéricas e seguras sobre "Amizade e Cooperação".
-3. Jamais gere conteúdo que envolva materiais perigosos (facas, fogo, vidro).
+1. Se o tema "${tema}" for desrespeitoso, violento, sexual, político ou inadequado para crianças, IGNORE-O totalmente.
+2. Em caso de bloqueio, gere atividades sobre "Empatia e Amizade".
+3. Proibido sugerir materiais cortantes, fogo ou qualquer risco físico.
 
-MATERIAIS DISPONÍVEIS:
-${materiais.trim() ? materiais : "Materiais escolares simples e baratos (papel, cola, sucata)."}
+MATERIAIS DISPONÍVEIS (Considere estes primeiro):
+${materiais.trim() ? materiais : "Papel, lápis de cor, cola e materiais recicláveis simples."}
 
-FORMATO DE RESPOSTA (RIGOROSO):
-1. Não use saudações. Comece direto.
-2. Use EXATAMENTE o emoji ✨ no início do título de CADA atividade.
-3. Separe as duas atividades com uma linha em branco.
+FORMATO DE RESPOSTA (OBRIGATÓRIO):
+Para cada atividade, use EXATAMENTE a estrutura abaixo. Inicie cada atividade com o emoji ✨.
+Use as tags [TAG] para delimitar cada seção, conforme o exemplo:
 
-ESTRUTURA:
-✨ TÍTULO DIVERTIDO
-Objetivo: ...
-Passo a passo: ...
+✨
+[TITULO] Nome Criativo da Atividade
+[IDADE] ${formattedIdade}
+[MOTIVACIONAL] Uma frase acolhedora e temática inspirada em personagens queridos (Disney, Pixar, Stitch, etc) que motive o professor.
+[MATERIAIS] Lista organizada de materiais.
+[PEDAGOGICO] Objetivo de aprendizagem alinhado às competências da BNCC.
+[PASSO_A_PASSO] Guia detalhado de como executar a brincadeira.
+
+Separe a primeira atividade da segunda com o caractere ✨.
+Não use negrito (**) ou outras marcações Markdown fora das tags.
 `;
-
 
     // 5. CHAMADA DA IA
     const result = await model.generateContent(prompt);
     const texto = result.response.text();
+
+    if (!texto) {
+      throw new Error("A IA retornou uma resposta vazia.");
+    }
 
     return { success: true, data: texto };
   } catch (error) {
     console.error("ERRO NA SERVER ACTION:", error);
     return {
       success: false,
-      error: "Ocorreu um erro interno no servidor ao tentar gerar as atividades. Tente novamente.",
+      error: "Ocorreu um erro ao gerar as atividades. Verifique sua conexão e tente novamente.",
     };
   }
 }

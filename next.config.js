@@ -1,13 +1,16 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  eslint: {
-    // Atenção: Isso permite que o build passe mesmo com avisos de lint
-    ignoreDuringBuilds: true,
+  images: {
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: 'lh3.googleusercontent.com',
+        port: '',
+        pathname: '/**',
+      },
+    ],
   },
-  typescript: {
-    // Isso ignora erros de tipagem no build se necessário (use com cautela)
-    ignoreBuildErrors: true,
-  },
-  // Configuração específica do React Compiler se quiser desativar a trava
 };
+
+// A mudança principal é aqui: de 'module.exports' para 'export default'
 export default nextConfig;

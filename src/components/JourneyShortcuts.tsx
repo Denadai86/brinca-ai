@@ -1,91 +1,66 @@
 "use client";
 
-import {
-  BookOpenCheck,
-  HeartHandshake,
-  Puzzle,
-  Wand2,
-} from "lucide-react";
+import { HelpCircle, LayoutGrid, Settings, Wand2 } from "lucide-react";
 
-export function JourneyShortcuts() {
+export type SectionType = "pain" | "shelf" | "how" | "generator";
+
+interface JourneyShortcutsProps {
+  activeSection: SectionType;
+  onSelect: (section: SectionType) => void;
+}
+
+export function JourneyShortcuts({ activeSection, onSelect }: JourneyShortcutsProps) {
+  const shortcuts = [
+    { 
+      id: "pain", 
+      label: "Para mim?", 
+      icon: <HelpCircle size={20} />, 
+      activeClass: "border-blue-500 text-blue-600 bg-blue-50 shadow-md shadow-blue-100",
+      inactiveClass: "border-slate-100 text-slate-400"
+    },
+    { 
+      id: "shelf", 
+      label: "Exemplos", 
+      icon: <LayoutGrid size={20} />, 
+      activeClass: "border-pink-500 text-pink-600 bg-pink-50 shadow-md shadow-pink-100",
+      inactiveClass: "border-slate-100 text-slate-400"
+    },
+    { 
+      id: "how", 
+      label: "Tutorial", 
+      icon: <Settings size={20} />, 
+      activeClass: "border-amber-500 text-amber-600 bg-amber-50 shadow-md shadow-amber-100",
+      inactiveClass: "border-slate-100 text-slate-400"
+    },
+    { 
+      id: "generator", 
+      label: "CRIAR", 
+      icon: <Wand2 size={20} />, 
+      activeClass: "border-purple-600 text-purple-700 bg-purple-50 shadow-md shadow-purple-100 ring-2 ring-purple-500/10",
+      inactiveClass: "border-slate-100 text-slate-400"
+    },
+  ] as const;
+
   return (
-    <section className="relative bg-gradient-to-b from-indigo-50 via-purple-50 to-purple-100">
-      <div className="mb-16 text-center">
-        <h2 className="text-3xl md:text-4xl font-black tracking-tight text-slate-900">
-          Como o <span className="text-purple-600">Brinca-AI</span> pode te ajudar hoje?
-        </h2>
-        <p className="mx-auto mt-4 max-w-2xl text-lg text-slate-600">
-          Escolha por onde começar. Sem pressa, sem cobrança. 💜
-        </p>
-      </div>
-
-      <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-                {/* DOR */}
-        <a
-          href="#isso-e-pra-mim"
-          className="group rounded-3xl border border-stone-200 bg-stone-50 p-6 transition-all hover:-translate-y-1 hover:shadow-lg"
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4">
+      {shortcuts.map((item) => (
+        <button
+          key={item.id}
+          onClick={() => onSelect(item.id)}
+          className={`
+            flex items-center gap-3 p-3 md:p-6 rounded-2xl md:rounded-[2.5rem] border-2 transition-all duration-300
+            ${activeSection === item.id ? item.activeClass : `${item.inactiveClass} bg-white`}
+          `}
         >
-          <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-stone-600 text-white shadow-md">
-            <HeartHandshake className="h-6 w-6" />
+          {/* Ícone menor no mobile para caber o texto ao lado */}
+          <div className={`shrink-0 ${activeSection === item.id ? "scale-110" : ""}`}>
+            {item.icon}
           </div>
-          <h3 className="text-lg font-black text-slate-800">
-            Isso é pra mim?
-          </h3>
-          <p className="mt-2 text-sm leading-relaxed text-slate-600">
-            Se planejar anda cansativo, você não está sozinha.
-          </p>
-        </a>
-        
-        {/* EXEMPLOS */}
-        <a
-          href="#exemplos"
-          className="group rounded-3xl border border-purple-200 bg-purple-50 p-6 transition-all hover:-translate-y-1 hover:shadow-lg"
-        >
-          <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-purple-600 text-white shadow-md">
-            <BookOpenCheck className="h-6 w-6" />
-          </div>
-          <h3 className="text-lg font-black text-purple-700">
-            Ver exemplos prontos
-          </h3>
-          <p className="mt-2 text-sm leading-relaxed text-slate-600">
-            Atividades reais, pensadas para a rotina da sala de aula.
-          </p>
-        </a>
-
-
-
-        {/* COMO FUNCIONA */}
-        <a
-          href="#como-funciona"
-          className="group rounded-3xl border border-blue-200 bg-blue-50 p-6 transition-all hover:-translate-y-1 hover:shadow-lg"
-        >
-          <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-md">
-            <Puzzle className="h-6 w-6" />
-          </div>
-          <h3 className="text-lg font-black text-blue-700">
-            Como funciona
-          </h3>
-          <p className="mt-2 text-sm leading-relaxed text-slate-600">
-            Do tema à atividade pronta em poucos passos simples.
-          </p>
-        </a>
-
-        {/* AÇÃO */}
-        <a
-          href="#gerador"
-          className="group rounded-3xl bg-gradient-to-br from-purple-600 to-pink-500 p-6 text-white transition-all hover:-translate-y-1 hover:shadow-purple-500/40"
-        >
-          <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-white/20 shadow-md backdrop-blur">
-            <Wand2 className="h-6 w-6 animate-pulse" />
-          </div>
-          <h3 className="text-lg font-black">
-            Criar atividade agora
-          </h3>
-          <p className="mt-2 text-sm leading-relaxed text-white/90">
-            Personalize uma atividade para sua turma em segundos.
-          </p>
-        </a>
-      </div>
-    </section>
+          <span className="text-[10px] md:text-xs font-black uppercase tracking-tight md:tracking-widest">
+            {item.label}
+          </span>
+        </button>
+      ))}
+    </div>
   );
 }
