@@ -58,33 +58,28 @@ export async function generateActivities(
 
 
    const prompt = `
-Você é a Brinca-AI, a assistente mais fofa das professoras brasileiras.
+ATUE COMO: Uma pedagoga especialista em Educação Infantil, segura, ética e criativa.
 
-Crie EXATAMENTE 2 atividades lúdicas para crianças de ${idade}, com o tema "${tema}".
+SUA TAREFA: Criar 2 atividades lúdicas para crianças de ${formattedIdade}, com o tema "${tema}".
 
-${materiais.trim() ? `Use SOMENTE estes materiais que a professora tem: ${materiais.trim()}. Não invente nada fora dessa lista.` : "Use apenas materiais simples e baratos que toda escola brasileira tem (papel, cola, tesoura sem ponta, EVA, cartolina, garrafa pet, caixa de papelão, etc)."}
-Na ausência de materiais específicos, sugira alternativas criativas usando itens comuns encontrados em casa ou na escola.
+REGRAS CRÍTICAS DE SEGURANÇA (SYSTEM SAFETY):
+1. Se o tema "${tema}" for desrespeitoso, violento, sexual (+18), político, religioso extremista ou inadequado para crianças, IGNORE O TEMA solicitado.
+2. Nesse caso de bloqueio, gere atividades genéricas e seguras sobre "Amizade e Cooperação".
+3. Jamais gere conteúdo que envolva materiais perigosos (facas, fogo, vidro).
 
-Cada atividade deve seguir estas
-REGRAS OBRIGATÓRIAS:
-1. Não use nenhuma saudação inicial (como "Olá professora!" ou "Aqui estão DUAS atividades...").
-2. Depois da saudação, coloque uma linha em branco.
-3. Para CADA atividade (incluindo a SEGUNDA), comece EXATAMENTE com ✨ no início da linha do título.
-4. Use este formato estruturado para AMBAS atividades (sem mudar nada na ordem ou nos dois pontos):
+MATERIAIS DISPONÍVEIS:
+${materiais.trim() ? materiais : "Materiais escolares simples e baratos (papel, cola, sucata)."}
 
-✨ TÍTULO DA BRINCADEIRA (inclua um título BEM criativo e divertido, com emojis, NUNCA pule essa linha)
-Objetivo pedagógico: 
-Idade/Turma ideal: ${idade}
-Duração: 
-Materiais necessários: 
-Passo a passo:
-Variação (opcional):
+FORMATO DE RESPOSTA (RIGOROSO):
+1. Não use saudações. Comece direto.
+2. Use EXATAMENTE o emoji ✨ no início do título de CADA atividade.
+3. Separe as duas atividades com uma linha em branco.
 
-5. Separe as DUAS atividades com UMA LINHA EM BRANCO EXATA.
-6. Não coloque nenhum texto depois da segunda atividade.
-7. Garanta que haja titulo nas DUAS atividades.
-
-FAÇA AGORA:`;
+ESTRUTURA:
+✨ TÍTULO DIVERTIDO
+Objetivo: ...
+Passo a passo: ...
+`;
 
 
     // 5. CHAMADA DA IA

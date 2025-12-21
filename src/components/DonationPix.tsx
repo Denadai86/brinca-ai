@@ -1,140 +1,68 @@
 // src/components/DonationPix.tsx
+
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { Copy, Heart, QrCode, BadgeCheck } from "lucide-react";
-import QRCode from "react-qr-code";
+import { useState } from "react";
+import { Copy, Check, Heart } from "lucide-react";
 
-type DonationPixProps = {
+// 1. Definimos a Interface das Props
+interface DonationPixProps {
   pixKey: string;
-};
+}
 
 export function DonationPix({ pixKey }: DonationPixProps) {
   const [copied, setCopied] = useState(false);
-  const [isSupporter, setIsSupporter] = useState(false);
 
-  /* ---------------- texto A/B ---------------- */
-  const variant = useMemo<"emocional" | "tecnico">(() => {
-    return Math.random() > 0.5 ? "emocional" : "tecnico";
-  }, []);
-
-  /* ---------------- estado apoiador ---------------- */
-  useEffect(() => {
-    const supporter = localStorage.getItem("brincaai_supporter");
-    if (supporter === "true") setIsSupporter(true);
-  }, []);
-
-  function handleCopy() {
+  const handleCopy = () => {
     navigator.clipboard.writeText(pixKey);
     setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  }
-
-  function handleSupporter() {
-    localStorage.setItem("brincaai_supporter", "true");
-    setIsSupporter(true);
-  }
+    setTimeout(() => setCopied(false), 2000); // Reseta após 2s
+  };
 
   return (
-    <section className="mt-14 rounded-[2.5rem] border border-purple-200 bg-purple-50/70 p-8 md:p-12 shadow-sm">
-      <div className="mx-auto max-w-2xl text-center space-y-8">
+    <div className="mx-auto max-w-md text-center">
+      <div className="mb-4 flex items-center justify-center gap-2 text-pink-600">
+        <Heart className="fill-pink-600 animate-pulse" size={20} />
+        <span className="text-sm font-bold uppercase tracking-widest">Apoie o projeto</span>
+      </div>
 
-        {/* ÍCONE */}
-        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-purple-600 text-white shadow-lg">
-          {isSupporter ? <BadgeCheck /> : <Heart />}
+      <h4 className="mb-2 text-lg font-bold text-slate-800">
+        Gostou da atividade?
+      </h4>
+      <p className="mb-6 text-sm text-slate-500">
+        Este gerador é gratuito. Se ele te ajudou a economizar tempo, considere fazer um Pix de qualquer valor para manter o servidor no ar! ☕
+      </p>
+
+      <div className="relative flex items-center gap-2 rounded-xl bg-slate-100 p-2 pr-3 border border-slate-200">
+        <div className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap px-3 text-sm font-medium text-slate-600">
+          {pixKey}
         </div>
-
-        {/* TEXTO */}
-        {!isSupporter ? (
-          variant === "emocional" ? (
+        
+        <button
+          onClick={handleCopy}
+          className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-bold transition-all ${
+            copied
+              ? "bg-green-500 text-white shadow-green-200 shadow-lg"
+              : "bg-white text-slate-700 shadow-sm hover:bg-slate-50 border border-slate-200"
+          }`}
+        >
+          {copied ? (
             <>
-              <h3 className="text-2xl font-black text-slate-800">
-                Isso te ajudou hoje?
-              </h3>
-              <p className="text-slate-600 leading-relaxed">
-                O Brinca-AI nasceu para apoiar professoras reais,
-                com pouco tempo e muitos desafios.
-                <br />
-                Se essa atividade facilitou seu dia,
-                uma doação simbólica mantém o projeto vivo 💜
-              </p>
+              <Check size={16} />
+              Copiado!
             </>
           ) : (
             <>
-              <h3 className="text-2xl font-black text-slate-800">
-                Apoie o Brinca-AI
-              </h3>
-              <p className="text-slate-600 leading-relaxed">
-                Projeto gratuito, mantido de forma independente.
-                <br />
-                Doações ajudam com servidores, melhorias e novas ideias.
-              </p>
+              <Copy size={16} />
+              Copiar
             </>
-          )
-        ) : (
-          <>
-            <h3 className="text-2xl font-black text-purple-700">
-              💜 Apoiador do Brinca-AI
-            </h3>
-            <p className="text-slate-600 leading-relaxed">
-              Obrigado por fortalecer um projeto feito
-              para quem educa com o coração.
-            </p>
-          </>
-        )}
-
-        {/* SUGESTÃO */}
-        <p className="text-sm font-semibold text-purple-700">
-          Doe R$5, R$10 ou o quanto seu coração mandar 😉
-        </p>
-
-        {/* QR + PIX */}
-        <div className="grid gap-6 md:grid-cols-2 items-center">
-          <div className="flex flex-col items-center gap-3">
-            <div className="rounded-2xl bg-white p-4 shadow-md">
-              <QRCode value={pixKey} size={140} />
-            </div>
-            <span className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-slate-500">
-              <QrCode size={14} />
-              Pix QR Code
-            </span>
-          </div>
-
-          <div className="rounded-2xl bg-white p-4 shadow-inner border border-purple-200">
-            <p className="mb-2 text-xs font-bold uppercase tracking-widest text-slate-500">
-              Pix copia e cola
-            </p>
-
-            <div className="flex flex-col gap-3">
-              <code className="rounded-xl bg-slate-100 px-4 py-3 text-xs break-all">
-                {pixKey}
-              </code>
-
-              <button
-                onClick={handleCopy}
-                className="inline-flex items-center justify-center gap-2 rounded-xl bg-purple-600 px-5 py-3 text-sm font-black text-white hover:bg-purple-700"
-              >
-                <Copy size={16} />
-                {copied ? "Copiado!" : "Copiar chave Pix"}
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* AÇÃO FINAL */}
-        {!isSupporter && (
-          <button
-            onClick={handleSupporter}
-            className="text-xs font-semibold text-slate-500 underline underline-offset-4 hover:text-slate-700"
-          >
-            Já contribui 💜
-          </button>
-        )}
-
-        <p className="text-xs text-slate-400">
-          Doação opcional. Nenhum valor é obrigatório.
-        </p>
+          )}
+        </button>
       </div>
-    </section>
+      
+      <p className="mt-3 text-xs text-slate-400">
+        Chave Pix (E-mail ou Aleatória)
+      </p>
+    </div>
   );
 }

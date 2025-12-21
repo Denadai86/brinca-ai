@@ -1,3 +1,5 @@
+//src/app/page.tsx
+
 "use client";
 
 import Hero from "@/components/Hero";
@@ -5,39 +7,44 @@ import { JourneyShortcuts } from "@/components/JourneyShortcuts";
 import { PainSection } from "@/components/PainSection";
 import { ShelfDisplay } from "@/components/ShelfDisplay";
 import { HowItWorksSection } from "@/components/HowItWorksSection";
-
 import { ActivityForm } from "@/components/ActivityForm";
 
 export default function Home() {
   return (
-    <main className="flex flex-col">
-      {/* 1. SONHO */}
+    <main className="flex min-h-screen flex-col bg-slate-50 overflow-x-hidden">
+      
+      {/* 1. TOPO DO FUNIL (Sonho e Promessa) */}
       <Hero />
 
-      {/* 2. ATALHOS */}
+      {/* 2. CONSCIÊNCIA (Atalhos e Dores) */}
       <JourneyShortcuts />
-
-      {/* 2. DOR */}
       <PainSection />
 
-      {/* 3. PROVA REAL */}
+      {/* 3. PROVA SOCIAL / EXEMPLOS */}
       <ShelfDisplay />
 
-      {/* 4. COMO FUNCIONA */}
-      <div className="pb-32">
+      {/* 4. MECÂNICA (Como funciona) */}
+      <div className="bg-white pb-24 pt-12">
         <HowItWorksSection />
       </div>
 
-      {/* 5. AÇÃO REAL */}
+      {/* 5. AÇÃO (Ferramenta Real) */}
       <section
         id="gerador"
-        className="relative mx-auto w-full max-w-6xl px-6 pt-24 pb-32"
+        className="relative mx-auto w-full max-w-6xl px-4 md:px-6 pb-32"
       >
-
-        <div className="rounded-[3rem] bg-white/80 p-6 shadow-2xl backdrop-blur-md md:p-12">
-          <ActivityForm />
+        <div className="text-center mb-10">
+          <span className="rounded-full bg-purple-100 px-4 py-1.5 text-xs font-bold uppercase tracking-widest text-purple-700">
+            Sua vez de testar
+          </span>
         </div>
+
+        {/* O formulário agora é autocontido e estiloso */}
+        <ActivityForm />
+        
       </section>
+
+      {/* Footer ficaria aqui abaixo */}
     </main>
   );
 }
