@@ -5,6 +5,7 @@ import { GtmScript, GtmNoScript } from "@/components/telemetry/GtmScript";
 import { AnimatedHeader } from "@/components/AnimatedHeader";
 import { AuthProvider } from "@/auth/AuthProvider";
 import { Metadata, Viewport } from "next";
+import { Footer } from "@/components/Footer"; // ✅ Importe aqui
 
 const GTM_ID = process.env.NEXT_PUBLIC_GTM_ID || null;
 
@@ -51,28 +52,7 @@ export default function RootLayout({
           </main>
         </AuthProvider>
 
-        <footer className="border-t border-slate-200/60 bg-white/40 backdrop-blur-md py-12">
-          <div className="max-w-5xl mx-auto px-4 text-center">
-            <div className="flex justify-center gap-8 mb-6">
-              <a
-                href="/termos-de-uso"
-                className="text-xs font-bold text-slate-400 hover:text-purple-600 uppercase tracking-widest"
-              >
-                Termos
-              </a>
-              <a
-                href="/politica-de-privacidade"
-                className="text-xs font-bold text-slate-400 hover:text-purple-600 uppercase tracking-widest"
-              >
-                Privacidade
-              </a>
-            </div>
-            <p className="text-slate-500 font-medium">
-              Brinca-AI © {new Date().getFullYear()} –{" "}
-              <span className="font-bold text-slate-900">acaoleve.com</span>
-            </p>
-          </div>
-        </footer>
+        <Footer /> {/* ✅ Adicione o Footer aqui */}  
       </body>
     </html>
   );

@@ -1,8 +1,11 @@
+// src/lib/actions.ts
+
 "use server";
 
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { db } from "@/lib/firebase-admin";
 import { revalidatePath } from "next/cache";
+import { FieldValue } from "firebase-admin/firestore";
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 
@@ -193,12 +196,58 @@ export async function getPublicActivities(categoria?: string) {
 }
 
 // --- 3. SHARE (Mantida) ---
-export async function shareActivityAction(data: any) {
+// src/app/actions.ts (Apenas atualize esta função no final)
+
+export async function shareActivityAction(data: {
+  authorName: string;
+  authorId: string;
+  instagramHandle: string;
+  authorPhoto?: string; // NOVO: Foto do Google
+  content: string;
+  theme: string;
+  age: string;
+}) {
   try {
-    await db.collection("community_feed").add({ ...data, status: "approved", createdAt: new Date() });
+    // 1. Salva na coleção "community_feed" (A oficial da vitrine social)
+    // Nota: Para a vitrine ler isso, precisamos garantir que o getPublicActivities
+    // leia desta coleção OU que a gente duplique para 'public_activities'.
+    // Para simplificar seu MVP, vamos salvar direto em 'public_activities' 
+    // com os dados novos, para aparecer na vitrine existente.
+    
+    await db.collection("public_activities").add({
+      tema: data.theme,
+      target: data.age,
+      content: data.content,
+      categoria: "comunidade", // Marcamos como vindo da comunidade
+      createdAt: new Date(),
+      
+      // DADOS DA FESSORINHA 👇
+      authorName: data.authorName,
+      authorPhoto: data.authorPhoto || null, // Se não tiver, vai null
+      instagramHandle: data.instagramHandle.replace("@", "").trim(), // Limpa o @
+    });
+
     revalidatePath("/");
+    revalidatePath("/vitrine");
     return { success: true };
   } catch (error) {
-    return { success: false, error: "Erro" };
+    console.error("Erro share:", error);
+    return { success: false, error: "Erro ao compartilhar" };
+  }
+}
+
+export async function toggleLikeAction(activityId: string) {
+  try {
+    const docRef = db.collection("public_activities").doc(activityId);
+    
+    // Incrementa 1 no contador de likes
+    await docRef.update({
+      likes: FieldValue.increment(1)
+    });
+
+    return { success: true };
+  } catch (error) {
+    console.error("Erro ao dar like:", error);
+    return { success: false };
   }
 }

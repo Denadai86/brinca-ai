@@ -1,11 +1,11 @@
-// src/components/ShareActivity.tsx
+//src/components/ShareActivity.tsx
 
 "use client";
 
 import { useState } from "react";
 import { Share2, Instagram, CheckCircle2, Loader2 } from "lucide-react";
 import { useAuth } from "@/auth/AuthProvider";
-import { shareActivityAction } from "@/lib/actions"; 
+import { shareActivityAction } from "@/lib/actions"; // ✅ Confirme se o caminho é esse ou @/lib/actions
 
 type ShareActivityProps = {
   activityContent: string;
@@ -33,7 +33,13 @@ export function ShareActivity({ activityContent, theme, age }: ShareActivityProp
     const result = await shareActivityAction({
         authorName: name,
         authorId: user.uid,
-        instagramHandle: instagram.replace("@", "").trim(),
+        instagramHandle: instagram.replace("@", "").trim(), // Limpa o @ se a pessoa colocar
+        
+        // 🛠️ CORREÇÃO DO ERRO DE TIPO AQUI:
+        // O TypeScript exige 'undefined' em vez de 'null' para campos opcionais (?)
+        // Se user.photoURL for null, passamos undefined.
+        authorPhoto: user.photoURL || undefined,
+        
         content: activityContent,
         theme,
         age
@@ -49,7 +55,7 @@ export function ShareActivity({ activityContent, theme, age }: ShareActivityProp
     setLoading(false);
   }
 
-  // ... (O resto do renderização continua igual) ...
+  // --- Renderização de Sucesso ---
   if (success) {
     return (
       <div className="mt-4 p-4 bg-green-50 rounded-xl border border-green-200 text-center animate-in fade-in">
@@ -61,6 +67,7 @@ export function ShareActivity({ activityContent, theme, age }: ShareActivityProp
     );
   }
   
+  // --- Botão Inicial (Fechado) ---
   if (!isOpen) {
     return (
       <button 
@@ -73,16 +80,16 @@ export function ShareActivity({ activityContent, theme, age }: ShareActivityProp
     );
   }
 
+  // --- Formulário (Aberto) ---
   return (
-    <div className="mt-6 p-6 bg-white border border-purple-100 rounded-2xl shadow-lg space-y-4">
-      {/* ... (Todo o formulário igual, apenas lógica do botão mudou) ... */}
+    <div className="mt-6 p-6 bg-white border border-purple-100 rounded-2xl shadow-lg space-y-4 animate-in slide-in-from-top-2">
         <h4 className="font-bold text-slate-800">Divulgar na Vitrine 🌟</h4>
       
       <div>
         <label className="text-xs font-bold text-slate-500 uppercase">Seu Nome</label>
         <input 
           value={name} onChange={(e) => setName(e.target.value)}
-          className="w-full mt-1 p-2 border rounded-lg text-sm"
+          className="w-full mt-1 p-2 border rounded-lg text-sm focus:ring-2 focus:ring-purple-500 outline-none"
           placeholder="Ex: Prof. Ana"
         />
       </div>
@@ -90,10 +97,11 @@ export function ShareActivity({ activityContent, theme, age }: ShareActivityProp
       <div>
         <label className="text-xs font-bold text-slate-500 uppercase">Instagram (Opcional)</label>
         <div className="relative mt-1">
+          {/* Se Instagram der erro de importação, troque por <Share2 size={16} ... /> */}
           <Instagram size={16} className="absolute left-3 top-2.5 text-slate-400"/>
           <input 
             value={instagram} onChange={(e) => setInstagram(e.target.value)}
-            className="w-full pl-9 p-2 border rounded-lg text-sm"
+            className="w-full pl-9 p-2 border rounded-lg text-sm focus:ring-2 focus:ring-purple-500 outline-none"
             placeholder="@seu.perfil"
           />
         </div>
@@ -105,9 +113,9 @@ export function ShareActivity({ activityContent, theme, age }: ShareActivityProp
           id="terms"
           checked={acceptedTerms}
           onChange={(e) => setAcceptedTerms(e.target.checked)}
-          className="mt-1 h-4 w-4 rounded border-slate-300 text-purple-600 focus:ring-purple-500"
+          className="mt-1 h-4 w-4 rounded border-slate-300 text-purple-600 focus:ring-purple-500 cursor-pointer"
         />
-        <label htmlFor="terms" className="text-xs text-slate-500 leading-tight">
+        <label htmlFor="terms" className="text-xs text-slate-500 leading-tight cursor-pointer">
           Autorizo a exibição pública desta atividade e do meu nome na vitrine do Brinca-AI.
         </label>
       </div>
@@ -117,9 +125,9 @@ export function ShareActivity({ activityContent, theme, age }: ShareActivityProp
         <button 
           onClick={handleShare} 
           disabled={loading || !acceptedTerms}
-          className="flex-1 py-2 text-sm font-bold text-white bg-purple-600 hover:bg-purple-700 rounded-lg disabled:opacity-50 flex justify-center"
+          className="flex-1 py-2 text-sm font-bold text-white bg-purple-600 hover:bg-purple-700 rounded-lg disabled:opacity-50 flex justify-center items-center transition-all"
         >
-          {loading ? <Loader2 className="animate-spin" /> : "Publicar"}
+          {loading ? <Loader2 className="animate-spin" size={18} /> : "Publicar"}
         </button>
       </div>
     </div>
