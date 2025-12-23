@@ -20,7 +20,7 @@ const LOADING_THEMES = [
   },
   {
     char: "Pizza 🍕",
-    msg: "Preparando uma fatia de conhecimento quentinha para você...",
+    msg: "Preparando uma fatia de conhecimento quentinha para você...0",
     color: "bg-orange-500",
     icon: <Pizza className="text-white fill-white" />
   },

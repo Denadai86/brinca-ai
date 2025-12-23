@@ -1,10 +1,11 @@
+// src/components/ShareActivity.tsx
+
 "use client";
 
 import { useState } from "react";
 import { Share2, Instagram, CheckCircle2, Loader2 } from "lucide-react";
-import { db } from "@/lib/firebase";
-import { collection, addDoc, serverTimestamp } from "firebase/firestore";
-import { useAuth } from "@/auth/AuthProvider"; // Importe seu hook de auth
+import { useAuth } from "@/auth/AuthProvider";
+import { shareActivityAction } from "@/lib/actions"; 
 
 type ShareActivityProps = {
   activityContent: string;
@@ -13,13 +14,13 @@ type ShareActivityProps = {
 };
 
 export function ShareActivity({ activityContent, theme, age }: ShareActivityProps) {
-  const { user } = useAuth(); // Pega o usuário logado
+  const { user } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const [instagram, setInstagram] = useState("");
-  const [name, setName] = useState(user?.displayName || ""); // Tenta preencher auto
+  const [name, setName] = useState(user?.displayName || "");
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
-  const [acceptedTerms, setAcceptedTerms] = useState(false); // Checkbox de consentimento
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
 
   async function handleShare() {
     if (!user) return alert("Você precisa estar logado para aparecer na vitrine! 🔒");
@@ -27,27 +28,28 @@ export function ShareActivity({ activityContent, theme, age }: ShareActivityProp
     if (!acceptedTerms) return alert("Confirme que aceita compartilhar a atividade.");
 
     setLoading(true);
-    try {
-      await addDoc(collection(db, "community_feed"), {
+    
+    // Chamada à Server Action
+    const result = await shareActivityAction({
         authorName: name,
-        authorId: user.uid, // Importante para segurança futura
+        authorId: user.uid,
         instagramHandle: instagram.replace("@", "").trim(),
         content: activityContent,
         theme,
-        age,
-        status: "approved", // Otimista (já validado pelo Prompt Blindado)
-        createdAt: serverTimestamp(),
-      });
+        age
+    });
+
+    if (result.success) {
       setSuccess(true);
       setIsOpen(false);
-    } catch (error) {
-      console.error("Erro:", error);
+    } else {
       alert("Erro ao publicar. Tente novamente.");
-    } finally {
-      setLoading(false);
     }
+    
+    setLoading(false);
   }
 
+  // ... (O resto do renderização continua igual) ...
   if (success) {
     return (
       <div className="mt-4 p-4 bg-green-50 rounded-xl border border-green-200 text-center animate-in fade-in">
@@ -58,7 +60,7 @@ export function ShareActivity({ activityContent, theme, age }: ShareActivityProp
       </div>
     );
   }
-
+  
   if (!isOpen) {
     return (
       <button 
@@ -73,7 +75,8 @@ export function ShareActivity({ activityContent, theme, age }: ShareActivityProp
 
   return (
     <div className="mt-6 p-6 bg-white border border-purple-100 rounded-2xl shadow-lg space-y-4">
-      <h4 className="font-bold text-slate-800">Divulgar na Vitrine 🌟</h4>
+      {/* ... (Todo o formulário igual, apenas lógica do botão mudou) ... */}
+        <h4 className="font-bold text-slate-800">Divulgar na Vitrine 🌟</h4>
       
       <div>
         <label className="text-xs font-bold text-slate-500 uppercase">Seu Nome</label>

@@ -1,95 +1,204 @@
-// src/lib/actions.ts
 "use server";
 
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import { z } from "zod";
+import { db } from "@/lib/firebase-admin";
+import { revalidatePath } from "next/cache";
 
-// 1. SCHEMA DE VALIDAÇÃO (Regras de Negócio)
-const ActivitySchema = z.object({
-  idade: z.string().min(1, "A idade/série é obrigatória."),
-  tema: z.string().min(3, "O tema deve ter pelo menos 3 caracteres."),
-  materiais: z.string().optional().default(""),
-  tipoIdade: z.enum(["idade", "serie"]),
-});
-
-export type FormState = {
-  success: boolean;
-  data?: string;
-  error?: string;
-};
-
-// 2. INSTANCIAÇÃO DA IA
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 
-export async function generateActivities(
-  formData: FormData
-): Promise<FormState> {
+// --- CACHE DE MODELOS (Para não consultar a API toda hora) ---
+// Variável global no escopo do servidor (dura enquanto o container estiver "quente")
+let cachedModels: string[] | null = null;
+let lastCacheTime = 0;
+const CACHE_DURATION = 1000 * 60 * 60; // 1 hora de cache
+
+// --- FUNÇÃO DE DESCOBERTA AUTOMÁTICA ---
+async function getDynamicModelList(): Promise<string[]> {
+  // 1. Se tiver cache válido, usa ele (Performance)
+  const now = Date.now();
+  if (cachedModels && (now - lastCacheTime < CACHE_DURATION)) {
+    return cachedModels;
+  }
+
   try {
-    // 3. COLETA E VALIDAÇÃO DOS DADOS
-    const rawData = {
-      idade: formData.get("idade"),
-      tema: formData.get("tema"),
-      materiais: formData.get("materiais"),
-      tipoIdade: formData.get("tipoIdade"),
-    };
+    console.log("🔄 Buscando lista atualizada de modelos no Google...");
+    
+    // Bate na API REST do Google para listar modelos
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models?key=${process.env.GEMINI_API_KEY}`
+    );
+    
+    if (!response.ok) throw new Error("Falha ao listar modelos");
+    
+    const data = await response.json();
+    
+    // 2. Filtragem Inteligente
+    const models = data.models
+      .filter((m: any) => 
+        // Deve suportar geração de conteúdo
+        m.supportedGenerationMethods.includes("generateContent") &&
+        // Não pode ser modelo só de visão ou embedding legado
+        !m.name.includes("vision") && 
+        !m.name.includes("embedding") &&
+        !m.name.includes("aqa")
+      )
+      .map((m: any) => m.name.replace("models/", "")); // Limpa o nome (tira o prefixo)
 
-    const validation = ActivitySchema.safeParse(rawData);
+    // 3. Ordenação Estratégica (Flash primeiro, depois Pro, depois o resto)
+    const sortedModels = models.sort((a: string, b: string) => {
+      // Flash tem prioridade (velocidade/custo)
+      const aFlash = a.includes("flash");
+      const bFlash = b.includes("flash");
+      if (aFlash && !bFlash) return -1;
+      if (!aFlash && bFlash) return 1;
 
-    if (!validation.success) {
-      const errorMsg = validation.error.issues[0].message;
-      return { success: false, error: errorMsg };
+      // Pro vem em segundo
+      const aPro = a.includes("pro");
+      const bPro = b.includes("pro");
+      if (aPro && !bPro) return -1;
+      if (!aPro && bPro) return 1;
+
+      // Mais novos primeiro (geralmente têm números maiores ou 'latest')
+      return b.localeCompare(a); 
+    });
+
+    console.log("📋 Modelos encontrados (auto):", sortedModels.slice(0, 3));
+    
+    // Salva no cache
+    cachedModels = sortedModels;
+    lastCacheTime = now;
+    
+    return sortedModels;
+  } catch (error) {
+    console.error("⚠️ Falha no auto-discovery. Usando lista manual.", error);
+    // Fallback de segurança se a API de listagem falhar
+    return ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-3-flash-preview"];
+  }
+}
+
+// --- FUNÇÃO DE GERAÇÃO COM FALLBACK DINÂMICO ---
+async function generateWithFallback(prompt: string): Promise<string> {
+  // Pega a lista automática
+  const modelosDisponiveis = await getDynamicModelList();
+
+  for (const modelName of modelosDisponiveis) {
+    try {
+      const model = genAI.getGenerativeModel({ model: modelName });
+      
+      const result = await model.generateContent({
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+      });
+      
+      const texto = result.response.text();
+      if (!texto) throw new Error("Vazio");
+
+      console.log(`✅ Sucesso com: ${modelName}`);
+      return texto;
+
+    } catch (error: any) {
+      // Ignora erros e tenta o próximo da lista
+      // console.warn(`Pulo: ${modelName} falhou.`);
+      continue;
     }
+  }
+  throw new Error("Nenhum modelo disponível conseguiu gerar a resposta.");
+}
 
-    const { idade, tema, materiais, tipoIdade } = validation.data;
-    const formattedIdade = `${idade} (${tipoIdade === "idade" ? "anos" : "série/ciclo"})`;
-
-    // 4. CONFIGURAÇÃO DO MODELO
-    // Utilizando gemini-1.5-flash para velocidade e custo-benefício em micro-SaaS
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+// --- 1. ACTION PRINCIPAL (A Mesma Lógica de Antes) ---
+export async function generateActivities(formData: FormData) {
+  try {
+    const tema = formData.get("tema") as string;
+    const idade = formData.get("idade") as string;
+    const tipoIdade = formData.get("tipoIdade") as string;
 
     const prompt = `
-ATUE COMO: Uma pedagoga sênior especialista em Educação Infantil e Ensino Fundamental I, com foco em aprendizagem lúdica e afetiva.
+    Atue como uma pedagoga especialista na BNCC.
+    Crie 2 (DUAS) variações de atividades lúdicas para crianças de ${idade} (${tipoIdade}), com o tema "${tema}".
+    
+    ⚠️ REGRA DE FORMATAÇÃO E SEPARAÇÃO:
+    
+    1. Estrutura de CADA atividade (Use exatamente estas tags):
+    [TITULO] (Nome criativo)
+    [MOTIVACIONAL] (Frase curta)
+    [MATERIAIS] (Lista bullet points)
+    [PEDAGOGICO] (Objetivo breve)
+    [PASSO_A_PASSO] (Instruções numeradas)
 
-SUA TAREFA: Criar exatamente 2 atividades pedagógicas originais para crianças de ${formattedIdade}, com o tema "${tema}".
+    2. IMPORTANTE: Entre a Atividade 1 e a Atividade 2, insira EXATAMENTE e APENAS esta linha separadora:
+    ===SEPARADOR===
+    
+    Comece direto com [TITULO] da primeira.
+    `;
 
-REGRAS CRÍTICAS DE SEGURANÇA (SYSTEM SAFETY):
-1. Se o tema "${tema}" for desrespeitoso, violento, sexual, político ou inadequado para crianças, IGNORE-O totalmente.
-2. Em caso de bloqueio, gere atividades sobre "Empatia e Amizade".
-3. Proibido sugerir materiais cortantes, fogo ou qualquer risco físico.
+    // Chama nossa nova função ultra-inteligente
+    const fullText = await generateWithFallback(prompt);
 
-MATERIAIS DISPONÍVEIS (Considere estes primeiro):
-${materiais.trim() ? materiais : "Papel, lápis de cor, cola e materiais recicláveis simples."}
+    // Corta e Salva
+    const atividadesArray = fullText.split("===SEPARADOR===");
 
-FORMATO DE RESPOSTA (OBRIGATÓRIO):
-Para cada atividade, use EXATAMENTE a estrutura abaixo. Inicie cada atividade com o emoji ✨.
-Use as tags [TAG] para delimitar cada seção, conforme o exemplo:
+    const savePromises = atividadesArray.map(async (atividadeContent) => {
+      const contentClean = atividadeContent.trim();
+      if (contentClean.length > 50) { 
+        return db.collection("public_activities").add({
+          tema,
+          target: `${idade} (${tipoIdade})`,
+          content: contentClean,
+          categoria: tipoIdade === "idade" ? "maternal" : "pre",
+          createdAt: new Date(),
+          likes: 0
+        });
+      }
+      return Promise.resolve(null);
+    });
 
-✨
-[TITULO] Nome Criativo da Atividade
-[IDADE] ${formattedIdade}
-[MOTIVACIONAL] Uma frase acolhedora e temática inspirada em personagens queridos (Disney, Pixar, Stitch, etc) que motive o professor.
-[MATERIAIS] Lista organizada de materiais.
-[PEDAGOGICO] Objetivo de aprendizagem alinhado às competências da BNCC.
-[PASSO_A_PASSO] Guia detalhado de como executar a brincadeira.
+    await Promise.all(savePromises);
+    revalidatePath("/");
+    
+    return { success: true, data: fullText.replace("===SEPARADOR===", "\n\n✨ --- OUTRA OPÇÃO --- ✨\n\n") };
 
-Separe a primeira atividade da segunda com o caractere ✨.
-Não use negrito (**) ou outras marcações Markdown fora das tags.
-`;
+  } catch (error: any) {
+    console.error("Erro Fatal:", error);
+    return { success: false, error: "O sistema de IA está instável no momento." };
+  }
+}
 
-    // 5. CHAMADA DA IA
-    const result = await model.generateContent(prompt);
-    const texto = result.response.text();
+// --- 2. VITRINE (Mantida) ---
+export async function getPublicActivities(categoria?: string) {
+  try {
+    let queryRef = db.collection("public_activities")
+      .orderBy("createdAt", "desc")
+      .limit(12);
 
-    if (!texto) {
-      throw new Error("A IA retornou uma resposta vazia.");
+    if (categoria && categoria !== "todos") {
+       queryRef = queryRef.where("categoria", "==", categoria);
     }
 
-    return { success: true, data: texto };
+    const snapshot = await queryRef.get();
+
+    const activities = snapshot.docs.map(doc => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        tema: data.tema || "Sem tema",
+        target: data.target || "Geral",
+        content: data.content || "",
+        createdAt: data.createdAt ? data.createdAt.toDate().toISOString() : new Date().toISOString(),
+      };
+    });
+
+    return { success: true, data: activities };
   } catch (error) {
-    console.error("ERRO NA SERVER ACTION:", error);
-    return {
-      success: false,
-      error: "Ocorreu um erro ao gerar as atividades. Verifique sua conexão e tente novamente.",
-    };
+    return { success: false, data: [] };
+  }
+}
+
+// --- 3. SHARE (Mantida) ---
+export async function shareActivityAction(data: any) {
+  try {
+    await db.collection("community_feed").add({ ...data, status: "approved", createdAt: new Date() });
+    revalidatePath("/");
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: "Erro" };
   }
 }

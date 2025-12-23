@@ -1,8 +1,10 @@
 // src/app/api/webhooks/mercadopago/route.ts
+
+
 import { NextResponse } from "next/server";
 import { MercadoPagoConfig, Payment } from "mercadopago";
-import { db } from "@/lib/firebase"; // Seu firebase configurado
-import { doc, updateDoc, arrayUnion, Timestamp } from "firebase/firestore";
+import { db } from "@/lib/firebase-admin"; // ✅ Admin SDK
+import { FieldValue } from "firebase-admin/firestore"; // Importante para arrayUnion
 
 const client = new MercadoPagoConfig({
   accessToken: process.env.MP_ACCESS_TOKEN!,
@@ -18,25 +20,21 @@ export async function POST(request: Request) {
       const payment = new Payment(client);
       const paymentData = await payment.get({ id });
 
-      // Só nos interessa pagamento APROVADO
       if (paymentData.status === "approved") {
-        const userId = paymentData.external_reference; // Lembra do Pulo do Gato?
+        const userId = paymentData.external_reference;
 
         if (userId) {
           console.log(`💰 Pagamento aprovado para user: ${userId}`);
 
-          // Atualiza o Firestore
-          const userRef = doc(db, "users", userId);
-          
-          await updateDoc(userRef, {
+          // Sintaxe Admin SDK
+          await db.collection("users").doc(userId).update({
             isSupporter: true,
-            // Guardamos histórico para o futuro ranking (gamificação)
-            donations: arrayUnion({
+            donations: FieldValue.arrayUnion({
               id: paymentData.id,
               amount: paymentData.transaction_amount,
-              date: Timestamp.now(),
+              date: new Date(),
             }),
-            lastDonationAt: Timestamp.now()
+            lastDonationAt: new Date()
           });
         }
       }
