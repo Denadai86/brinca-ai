@@ -2,8 +2,7 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { getPublicActivities } from "@/lib/actions";
-// IMPORTAÇÃO CORRETA AGORA:
-import { ActivityCard } from "./ActivityCard";
+import { ActivityCard } from "@/components/ActivityCard"; // Import com @ para garantir
 import { LayoutGrid, Loader2, Sparkles } from "lucide-react";
 
 export function ShelfDisplay() {
@@ -13,7 +12,10 @@ export function ShelfDisplay() {
 
   useEffect(() => {
     startTransition(async () => {
-      const res = await getPublicActivities(filter);
+      // ✅ CORREÇÃO: Passamos os argumentos na ordem correta da nova API
+      // 1. Ordem (createdAt), 2. Limite (12), 3. Filtro (filter)
+      const res = await getPublicActivities("createdAt", 12, filter);
+      
       if (res.success && res.data) {
         setActivities(res.data);
       }
@@ -54,12 +56,14 @@ export function ShelfDisplay() {
         </div>
       ) : activities.length === 0 ? (
         <div className="py-20 text-center bg-slate-50 rounded-[3rem] border border-dashed border-slate-200">
+           <Sparkles className="w-12 h-12 text-slate-300 mx-auto mb-4" />
            <p className="text-slate-400 font-medium">Nenhuma atividade encontrada nesta categoria.</p>
         </div>
       ) : (
         <div className="grid md:grid-cols-2 gap-8 animate-in fade-in duration-500">
           {activities.map((act, i) => (
-            <ActivityCard key={act.id || i} content={act.content} index={i} />
+            /* ✅ CORREÇÃO: Passando o objeto 'activity' completo, não 'content' */
+            <ActivityCard key={act.id || i} activity={act} index={i} />
           ))}
         </div>
       )}

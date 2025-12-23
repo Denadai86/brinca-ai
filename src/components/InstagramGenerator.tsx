@@ -1,125 +1,81 @@
 "use client";
 
-import { Instagram, Loader2 } from "lucide-react";
-import html2canvas from "html2canvas";
-import { useRef, useState, useMemo } from "react";
+import { Instagram } from "lucide-react";
+// Importações mantidas comentadas para uso futuro quando reativar a feature
+// import { useRef, useState } from "react";
+// import { Download, Lock } from "lucide-react";
+// import html2canvas from "html2canvas";
 
 interface InstagramGeneratorProps {
-  content: string;
-  theme: string;
-  age: string;
+  activity: {
+    tema: string;
+    target: string;
+    content: string;
+  };
 }
 
-export function InstagramGenerator({
-  content,
-  theme,
-  age,
-}: InstagramGeneratorProps) {
-  const cardRef = useRef<HTMLDivElement>(null);
-  const [loading, setLoading] = useState(false);
+export function InstagramGenerator({ activity }: InstagramGeneratorProps) {
+  // const postRef = useRef<HTMLDivElement>(null);
+  // const [isGenerating, setIsGenerating] = useState(false);
 
-  // ===============================
-  // 🧠 PROCESSAMENTO ISOLADO
-  // ===============================
-  const { title, materials, steps } = useMemo(() => {
-    if (!content?.trim()) {
-      return {
-        title: theme || "Atividade Criativa",
-        materials:
-          "• Papel\n• Canetinhas ou lápis de cor\n• Tesoura sem ponta\n• Cola",
-        steps:
-          "1. Reúna os materiais\n2. Explique a atividade\n3. Estimule a criatividade\n4. Celebre juntos",
-      };
-    }
-
-    return {
-      title: theme || "Atividade Criativa",
-      materials:
-        "• Papel\n• Canetinhas ou lápis de cor\n• Tesoura sem ponta\n• Cola",
-      steps:
-        "1. Reúna os materiais\n2. Explique a atividade\n3. Estimule a criatividade\n4. Celebre juntos",
-    };
-  }, [content, theme]);
-
-  // ===============================
-  // 📸 DOWNLOAD PNG
-  // ===============================
-  async function handleDownload() {
-    if (!cardRef.current) return;
-
-    setLoading(true);
-
+  const handleDownload = async () => {
+    // Feature desativada temporariamente.
+    // O código original foi preservado comentado para reativação futura.
+    /*
+    if (!postRef.current) return;
+    setIsGenerating(true);
     try {
-      await new Promise(r => setTimeout(r, 200));
-
-      const canvas = await html2canvas(cardRef.current, {
-        scale: 3,
-        backgroundColor: "#ffffff",
+      const canvas = await html2canvas(postRef.current, {
+        scale: 2,
         useCORS: true,
+        backgroundColor: null,
       });
-
       const link = document.createElement("a");
+      link.download = `post-instagram-${activity.tema}.png`;
       link.href = canvas.toDataURL("image/png");
-      link.download = `brinca-ai-${Date.now()}.png`;
       link.click();
     } catch (err) {
-      console.error(err);
-      alert("Erro ao gerar imagem");
+      console.error("Erro ao gerar post:", err);
     } finally {
-      setLoading(false);
+      setIsGenerating(false);
     }
-  }
-
-  if (!content && !theme) return null;
+    */
+  };
 
   return (
-    <div>
-      <button
-        onClick={handleDownload}
-        disabled={loading}
-        className="flex items-center gap-2 bg-pink-100 text-pink-700 px-4 py-2 rounded-xl font-bold"
-      >
-        {loading ? (
-          <Loader2 className="animate-spin" size={18} />
-        ) : (
-          <Instagram size={18} />
-        )}
-        Baixar Post
-      </button>
-
-      {/* CARD OFFSCREEN */}
-      <div className="fixed -left-[9999px] top-0">
+    <div className="flex flex-col gap-4">
+      {/* Área de Visualização do Post (Hidden enquanto desativado) */}
+      <div className="hidden">
         <div
-          ref={cardRef}
-          className="w-[1080px] h-[1080px] bg-white flex items-center justify-center"
+          // ref={postRef}
+          className="w-[1080px] h-[1080px] bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 p-16 flex flex-col justify-center items-center text-white text-center relative overflow-hidden"
+          style={{ fontFamily: "sans-serif" }}
         >
-          <div className="w-[90%] h-[90%] rounded-[48px] border p-16 flex flex-col justify-between">
-            <div>
-              <h2 className="text-5xl font-bold">Brinca-AI</h2>
-              <p className="text-xl text-gray-500">acaoleve.com</p>
-            </div>
-
-            <div>
-              <p className="uppercase text-purple-500 font-bold">{theme}</p>
-              <h1 className="text-6xl font-extrabold">{title}</h1>
-            </div>
-
-            <div>
-              <h3 className="text-3xl font-bold mb-2">Materiais</h3>
-              <p className="whitespace-pre-line text-2xl">{materials}</p>
-            </div>
-
-            <div>
-              <h3 className="text-3xl font-bold mb-2">Como Fazer</h3>
-              <p className="whitespace-pre-line text-2xl">{steps}</p>
-            </div>
-
-            <div className="text-center text-xl text-gray-600">
-              Idade: {age || "Geral"}
-            </div>
-          </div>
+          <h2 className="text-6xl font-bold mb-8">{activity.tema}</h2>
+          <p className="text-3xl">{activity.target}</p>
         </div>
       </div>
+
+      {/* Botão Modificado: Desativado + Badge */}
+      <button
+        disabled
+        onClick={handleDownload}
+        title="Funcionalidade em manutenção"
+        className="group relative flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-slate-400 cursor-not-allowed transition-all opacity-80 hover:opacity-100"
+      >
+        {/* Badge "Em Breve" Flutuante */}
+        <span className="absolute -top-2.5 -right-2 bg-indigo-100 text-indigo-700 text-[9px] font-bold px-1.5 py-0.5 rounded-full border border-indigo-200 shadow-sm z-10 whitespace-nowrap">
+          EM BREVE
+        </span>
+
+        <Instagram size={18} />
+        <span className="font-medium text-xs sm:text-sm">Gerar Post</span>
+      </button>
+
+      {/* Texto de apoio opcional (pode remover se poluir muito o card) */}
+      {/* <p className="text-center text-[10px] text-slate-400 mt-1 hidden sm:block">
+        Voltamos logo! 🎨
+      </p> */}
     </div>
   );
 }

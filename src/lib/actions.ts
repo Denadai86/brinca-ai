@@ -1,234 +1,209 @@
-// src/lib/actions.ts
-
 "use server";
 
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import { db } from "@/lib/firebase-admin";
+import { db } from "@/lib/firebase-admin"; //
 import { revalidatePath } from "next/cache";
 import { FieldValue } from "firebase-admin/firestore";
+import { headers } from "next/headers";
+// Certifique-se de que o arquivo src/lib/ratelimit.ts existe conforme conversamos
+import { checkRateLimit } from "./ratelimit"; 
+import { GeminiListResponse, GeminiModelRaw, GenerationResponse, ActivityData } from "@/types/gemini";
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
+// --- INICIALIZAÇÃO SEGURA ---
+const apiKey = process.env.GEMINI_API_KEY;
+if (!apiKey) {
+  throw new Error("FATAL: GEMINI_API_KEY não configurada.");
+}
+const genAI = new GoogleGenerativeAI(apiKey);
 
-// --- CACHE DE MODELOS (Para não consultar a API toda hora) ---
-// Variável global no escopo do servidor (dura enquanto o container estiver "quente")
+// --- CACHE DE MODELOS (Estratégia de Resiliência) ---
 let cachedModels: string[] | null = null;
 let lastCacheTime = 0;
-const CACHE_DURATION = 1000 * 60 * 60; // 1 hora de cache
+const CACHE_DURATION = 1000 * 60 * 60; // 1 hora
 
-// --- FUNÇÃO DE DESCOBERTA AUTOMÁTICA ---
+// 1. DESCOBERTA DE MODELOS
 async function getDynamicModelList(): Promise<string[]> {
-  // 1. Se tiver cache válido, usa ele (Performance)
   const now = Date.now();
   if (cachedModels && (now - lastCacheTime < CACHE_DURATION)) {
     return cachedModels;
   }
 
   try {
-    console.log("🔄 Buscando lista atualizada de modelos no Google...");
-    
-    // Bate na API REST do Google para listar modelos
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models?key=${process.env.GEMINI_API_KEY}`
+      `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`
     );
     
-    if (!response.ok) throw new Error("Falha ao listar modelos");
+    if (!response.ok) throw new Error(`Google API Error: ${response.statusText}`);
     
-    const data = await response.json();
+    const data = (await response.json()) as GeminiListResponse;
     
-    // 2. Filtragem Inteligente
     const models = data.models
-      .filter((m: any) => 
-        // Deve suportar geração de conteúdo
+      .filter((m: GeminiModelRaw) => 
         m.supportedGenerationMethods.includes("generateContent") &&
-        // Não pode ser modelo só de visão ou embedding legado
         !m.name.includes("vision") && 
         !m.name.includes("embedding") &&
         !m.name.includes("aqa")
       )
-      .map((m: any) => m.name.replace("models/", "")); // Limpa o nome (tira o prefixo)
+      .map((m) => m.name.replace("models/", ""));
 
-    // 3. Ordenação Estratégica (Flash primeiro, depois Pro, depois o resto)
-    const sortedModels = models.sort((a: string, b: string) => {
-      // Flash tem prioridade (velocidade/custo)
-      const aFlash = a.includes("flash");
-      const bFlash = b.includes("flash");
-      if (aFlash && !bFlash) return -1;
-      if (!aFlash && bFlash) return 1;
-
-      // Pro vem em segundo
-      const aPro = a.includes("pro");
-      const bPro = b.includes("pro");
-      if (aPro && !bPro) return -1;
-      if (!aPro && bPro) return 1;
-
-      // Mais novos primeiro (geralmente têm números maiores ou 'latest')
-      return b.localeCompare(a); 
+    // Ordenação: Flash > Pro > Mais novos
+    const sortedModels = models.sort((a, b) => {
+      const aScore = (a.includes("flash") ? 2 : 0) + (a.includes("pro") ? 1 : 0);
+      const bScore = (b.includes("flash") ? 2 : 0) + (b.includes("pro") ? 1 : 0);
+      if (aScore !== bScore) return bScore - aScore; 
+      return b.localeCompare(a);
     });
 
-    console.log("📋 Modelos encontrados (auto):", sortedModels.slice(0, 3));
-    
-    // Salva no cache
     cachedModels = sortedModels;
     lastCacheTime = now;
-    
     return sortedModels;
   } catch (error) {
-    console.error("⚠️ Falha no auto-discovery. Usando lista manual.", error);
-    // Fallback de segurança se a API de listagem falhar
-    return ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-3-flash-preview"];
+    console.error("⚠️ Fallback de modelos ativado:", error);
+    return ["gemini-1.5-flash", "gemini-1.5-pro"];
   }
 }
 
-// --- FUNÇÃO DE GERAÇÃO COM FALLBACK DINÂMICO ---
-async function generateWithFallback(prompt: string): Promise<string> {
-  // Pega a lista automática
-  const modelosDisponiveis = await getDynamicModelList();
-
-  for (const modelName of modelosDisponiveis) {
-    try {
-      const model = genAI.getGenerativeModel({ model: modelName });
-      
-      const result = await model.generateContent({
-        contents: [{ role: "user", parts: [{ text: prompt }] }],
-      });
-      
-      const texto = result.response.text();
-      if (!texto) throw new Error("Vazio");
-
-      console.log(`✅ Sucesso com: ${modelName}`);
-      return texto;
-
-    } catch (error: any) {
-      // Ignora erros e tenta o próximo da lista
-      // console.warn(`Pulo: ${modelName} falhou.`);
-      continue;
-    }
-  }
-  throw new Error("Nenhum modelo disponível conseguiu gerar a resposta.");
-}
-
-// --- 1. ACTION PRINCIPAL (A Mesma Lógica de Antes) ---
-export async function generateActivities(formData: FormData) {
+// 2. GERAÇÃO (Com Rate Limit)
+export async function generateActivities(formData: FormData): Promise<GenerationResponse> {
   try {
+    // 🛡️ Segurança: Rate Limit por IP
+    const ip = headers().get("x-forwarded-for") || "unknown";
+    const canProceed = await checkRateLimit(ip);
+    
+    if (!canProceed) {
+      return { 
+        success: false, 
+        error: "Limite de gerações excedido. Tente novamente em 1 hora ou torne-se um apoiador!" 
+      };
+    }
+
     const tema = formData.get("tema") as string;
     const idade = formData.get("idade") as string;
     const tipoIdade = formData.get("tipoIdade") as string;
+
+    if (!tema || !idade) return { success: false, error: "Dados incompletos." };
 
     const prompt = `
     Atue como uma pedagoga especialista na BNCC.
     Crie 2 (DUAS) variações de atividades lúdicas para crianças de ${idade} (${tipoIdade}), com o tema "${tema}".
     
-    ⚠️ REGRA DE FORMATAÇÃO E SEPARAÇÃO:
-    
-    1. Estrutura de CADA atividade (Use exatamente estas tags):
+    ⚠️ ESTRUTURA OBRIGATÓRIA:
     [TITULO] (Nome criativo)
     [MOTIVACIONAL] (Frase curta)
-    [MATERIAIS] (Lista bullet points)
-    [PEDAGOGICO] (Objetivo breve)
-    [PASSO_A_PASSO] (Instruções numeradas)
+    [MATERIAIS] (Bullet points)
+    [PEDAGOGICO] (Objetivo breve da BNCC)
+    [PASSO_A_PASSO] (Numerado)
 
-    2. IMPORTANTE: Entre a Atividade 1 e a Atividade 2, insira EXATAMENTE e APENAS esta linha separadora:
-    ===SEPARADOR===
-    
-    Comece direto com [TITULO] da primeira.
+    Separador entre atividades: ===SEPARADOR===
+    Não adicione introduções ou conclusões fora do formato.
     `;
 
-    // Chama nossa nova função ultra-inteligente
-    const fullText = await generateWithFallback(prompt);
+    const models = await getDynamicModelList();
+    let textResult = "";
 
-    // Corta e Salva
-    const atividadesArray = fullText.split("===SEPARADOR===");
+    // Tentativa em cascata (Fallback)
+    for (const modelName of models) {
+      try {
+        const model = genAI.getGenerativeModel({ model: modelName });
+        const result = await model.generateContent(prompt);
+        const text = result.response.text();
+        if (text) {
+          textResult = text;
+          break;
+        }
+      } catch (e) {
+        continue;
+      }
+    }
 
-    const savePromises = atividadesArray.map(async (atividadeContent) => {
-      const contentClean = atividadeContent.trim();
-      if (contentClean.length > 50) { 
+    if (!textResult) throw new Error("IA indisponível no momento.");
+
+    // Salva automaticamente
+    const activities = textResult.split("===SEPARADOR===");
+    const savePromises = activities
+      .filter(content => content.trim().length > 50)
+      .map(async (content) => {
         return db.collection("public_activities").add({
           tema,
           target: `${idade} (${tipoIdade})`,
-          content: contentClean,
+          content: content.trim(),
           categoria: tipoIdade === "idade" ? "maternal" : "pre",
           createdAt: new Date(),
           likes: 0
         });
-      }
-      return Promise.resolve(null);
-    });
+      });
 
     await Promise.all(savePromises);
-    revalidatePath("/");
+    revalidatePath("/vitrine");
     
-    return { success: true, data: fullText.replace("===SEPARADOR===", "\n\n✨ --- OUTRA OPÇÃO --- ✨\n\n") };
+    const displayData = textResult.replace("===SEPARADOR===", "\n\n✨ --- OUTRA OPÇÃO --- ✨\n\n");
+    return { success: true, data: displayData };
 
-  } catch (error: any) {
-    console.error("Erro Fatal:", error);
-    return { success: false, error: "O sistema de IA está instável no momento." };
+  } catch (error) {
+    console.error("Erro na geração:", error);
+    return { success: false, error: "Erro interno ao gerar atividade." };
   }
 }
 
-// --- 2. VITRINE (Mantida) ---
-export async function getPublicActivities(categoria?: string) {
+// 3. LEITURA (Refatorada para Filtros e Ordenação)
+export async function getPublicActivities(
+  orderByField: "createdAt" | "likes" = "createdAt", 
+  limitCount: number = 12,
+  categoryFilter: string = "todos" // ✅ NOVO PARÂMETRO
+) {
   try {
-    let queryRef = db.collection("public_activities")
-      .orderBy("createdAt", "desc")
-      .limit(12);
+    let query: FirebaseFirestore.Query = db.collection("public_activities");
 
-    if (categoria && categoria !== "todos") {
-       queryRef = queryRef.where("categoria", "==", categoria);
+    // Aplica filtro se não for "todos"
+    if (categoryFilter && categoryFilter !== "todos") {
+      query = query.where("categoria", "==", categoryFilter);
     }
+    
+    // ATENÇÃO: Se usar Filtro + OrderBy, o Firebase pode pedir índice composto.
+    const snapshot = await query
+      .orderBy(orderByField, "desc")
+      .limit(limitCount)
+      .get();
 
-    const snapshot = await queryRef.get();
+    const data: ActivityData[] = snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...(doc.data() as Omit<ActivityData, "id">),
+      createdAt: doc.data().createdAt?.toDate?.().toISOString() || new Date().toISOString()
+    }));
 
-    const activities = snapshot.docs.map(doc => {
-      const data = doc.data();
-      return {
-        id: doc.id,
-        tema: data.tema || "Sem tema",
-        target: data.target || "Geral",
-        content: data.content || "",
-        createdAt: data.createdAt ? data.createdAt.toDate().toISOString() : new Date().toISOString(),
-      };
-    });
-
-    return { success: true, data: activities };
+    return { success: true, data };
   } catch (error) {
+    console.error(`Erro ao buscar atividades (Filtro: ${categoryFilter}):`, error);
     return { success: false, data: [] };
   }
 }
 
-// --- 3. SHARE (Mantida) ---
-// src/app/actions.ts (Apenas atualize esta função no final)
-
+// 4. INTERAÇÕES SOCIAIS
 export async function shareActivityAction(data: {
   authorName: string;
-  authorId: string;
+  authorId?: string;
   instagramHandle: string;
-  authorPhoto?: string; // NOVO: Foto do Google
+  authorPhoto?: string;
   content: string;
   theme: string;
   age: string;
 }) {
   try {
-    // 1. Salva na coleção "community_feed" (A oficial da vitrine social)
-    // Nota: Para a vitrine ler isso, precisamos garantir que o getPublicActivities
-    // leia desta coleção OU que a gente duplique para 'public_activities'.
-    // Para simplificar seu MVP, vamos salvar direto em 'public_activities' 
-    // com os dados novos, para aparecer na vitrine existente.
-    
     await db.collection("public_activities").add({
       tema: data.theme,
       target: data.age,
       content: data.content,
-      categoria: "comunidade", // Marcamos como vindo da comunidade
+      categoria: "comunidade",
       createdAt: new Date(),
-      
-      // DADOS DA FESSORINHA 👇
+      likes: 0,
       authorName: data.authorName,
-      authorPhoto: data.authorPhoto || null, // Se não tiver, vai null
-      instagramHandle: data.instagramHandle.replace("@", "").trim(), // Limpa o @
+      authorId: data.authorId || null,
+      authorPhoto: data.authorPhoto || null,
+      instagramHandle: data.instagramHandle.replace("@", "").trim(),
     });
 
-    revalidatePath("/");
     revalidatePath("/vitrine");
+    revalidatePath("/dashboard");
     return { success: true };
   } catch (error) {
     console.error("Erro share:", error);
@@ -238,16 +213,33 @@ export async function shareActivityAction(data: {
 
 export async function toggleLikeAction(activityId: string) {
   try {
-    const docRef = db.collection("public_activities").doc(activityId);
-    
-    // Incrementa 1 no contador de likes
-    await docRef.update({
+    await db.collection("public_activities").doc(activityId).update({
       likes: FieldValue.increment(1)
     });
-
     return { success: true };
   } catch (error) {
-    console.error("Erro ao dar like:", error);
     return { success: false };
+  }
+}
+
+// 5. DASHBOARD USER
+export async function getUserActivities(userId: string) {
+  try {
+    const snapshot = await db.collection("public_activities")
+      .where("authorId", "==", userId)
+      .orderBy("createdAt", "desc")
+      .limit(20)
+      .get();
+
+    const data = snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...(doc.data() as any),
+      createdAt: doc.data().createdAt?.toDate().toISOString()
+    }));
+
+    return { success: true, data };
+  } catch (error) {
+    console.error("Erro getUserActivities:", error);
+    return { success: false, data: [] };
   }
 }

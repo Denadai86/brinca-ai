@@ -1,18 +1,50 @@
-// src/app/atividade/%5Bid%5D/page.tsx
-
 import { db } from "@/lib/firebase-admin";
 import { ArrowLeft, Calendar } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import PrintButton from "@/components/PrintButton";
-import { InstagramGenerator } from "@/components/InstagramGenerator"; // ✅ Novo componente
+import { InstagramGenerator } from "@/components/InstagramGenerator";
 
-async function getActivity(id: string) {
+// Definição da interface para garantir tipagem correta
+interface ActivityData {
+  id: string;
+  tema: string;
+  target: string;
+  content: string;
+  categoria: string;
+  likes: number;
+  authorName: string | null;
+  authorPhoto: string | null;
+  instagramHandle: string | null;
+  createdAt: string;
+}
+
+async function getActivity(id: string): Promise<ActivityData | null> {
   try {
     const doc = await db.collection("public_activities").doc(id).get();
+    
     if (!doc.exists) return null;
-    return { id: doc.id, ...doc.data() } as any;
+
+    const rawData = doc.data();
+    if (!rawData) return null;
+
+    // ✅ Limpeza e Serialização: Transformamos o documento do Firebase em um objeto plano (POJO)
+    // Isso evita o erro "Only plain objects can be passed to Client Components"
+    return {
+      id: doc.id,
+      tema: rawData.tema || "",
+      target: rawData.target || "",
+      content: rawData.content || "",
+      categoria: rawData.categoria || "",
+      likes: rawData.likes || 0,
+      authorName: rawData.authorName || null,
+      authorPhoto: rawData.authorPhoto || null,
+      instagramHandle: rawData.instagramHandle || null,
+      // Converte o Timestamp do Firebase para string ISO
+      createdAt: rawData.createdAt?.toDate?.().toISOString() || new Date().toISOString()
+    };
   } catch (error) {
+    console.error("Erro ao buscar atividade:", error);
     return null;
   }
 }
@@ -22,7 +54,7 @@ export default async function ActivityDetailPage({ params }: { params: { id: str
 
   if (!activity) return notFound();
 
-  // Formatação do Texto (Emojis e Cores)
+  // Formatação do Texto baseada nas tags geradas pela IA
   const formattedContent = activity.content.split("\n").map((line: string, i: number) => {
     if (line.includes("[TITULO]")) 
       return <h1 key={i} className="text-3xl font-bold text-purple-800 mb-6 mt-2 print:text-black print:text-2xl">{line.replace("[TITULO]", "")}</h1>;
@@ -76,7 +108,7 @@ export default async function ActivityDetailPage({ params }: { params: { id: str
                 Atividade: {activity.tema} ({activity.target})
               </h1>
               
-              {/* Nome do Autor na Página de Detalhe também */}
+              {/* Nome do Autor */}
               {activity.authorName && (
                 <div className="flex items-center gap-2 mt-4 bg-white/10 w-fit px-3 py-1.5 rounded-full print:hidden">
                     <span className="text-xs font-bold text-white/90">Criado por {activity.authorName}</span>
@@ -86,20 +118,15 @@ export default async function ActivityDetailPage({ params }: { params: { id: str
             </div>
 
             {/* AÇÕES (Gerar Post + Imprimir) */}
-            <div className="flex flex-wrap gap-2 print:hidden shrink-0">
-               {/* Gerador de Post para Instagram */}
-               <InstagramGenerator
-                content={activity.conteudo}
-                theme={activity.tema}
-                age={activity.target}
-              />
-               {/* Botão de Imprimir */}
+            <div className="flex flex-wrap gap-2 print:hidden shrink-0 items-center">
+               {/* Passamos o objeto activity limpo para o componente cliente */}
+               <InstagramGenerator activity={activity} />
                <PrintButton />
             </div>
           </div>
           
           <div className="flex items-center gap-2 mt-4 text-white/80 text-sm print:hidden">
-            <Calendar size={14} /> Gerado em {new Date(activity.createdAt).toLocaleDateString()}
+            <Calendar size={14} /> Gerado em {new Date(activity.createdAt).toLocaleDateString('pt-BR')}
           </div>
         </div>
 
@@ -109,8 +136,9 @@ export default async function ActivityDetailPage({ params }: { params: { id: str
             {formattedContent}
           </div>
 
+          {/* Rodapé do Print */}
           <div className="hidden print:flex mt-12 pt-8 border-t border-slate-300 justify-between text-xs text-slate-400">
-            <span>app.acaoleve.com</span>
+            <span>brinca-ai.acaoleve.com</span>
             <span>Feito com 💜 para educadores</span>
           </div>
         </div>

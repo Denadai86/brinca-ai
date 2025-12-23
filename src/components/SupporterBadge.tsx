@@ -1,6 +1,6 @@
 "use client";
 
-import { Heart } from "lucide-react";
+import { Crown, Heart } from "lucide-react"; // Crown é mais premium
 import { useAuth } from "@/auth/AuthProvider";
 import { useEffect, useState } from "react";
 
@@ -9,26 +9,38 @@ type Props = {
 };
 
 export function SupporterBadge({ isCompact = false }: Props) {
-  const { user, loading } = useAuth();
-  const [isSupporter, setIsSupporter] = useState(false);
+  const { user, profile, loading } = useAuth();
+  
+  // Confia mais no profile do Firestore do que no localStorage para evitar fraudes simples
+  const isSupporter = profile?.isSupporter || false;
 
-  useEffect(() => {
-    if (!user) return;
+  if (loading || !user) return null;
 
-    const supporter = localStorage.getItem("brincaai_supporter");
-    setIsSupporter(supporter === "true");
-  }, [user]);
-
-  if (loading || !user || !isSupporter) return null;
+  if (!isSupporter) {
+    // Opcional: Mostrar botão "Vire Apoiador" cinza se quiser upsell
+    return null;
+  }
 
   return (
     <div
-      className={`flex items-center gap-2 rounded-full bg-pink-100 px-3 py-1 text-pink-700 shadow-sm transition-all
-        ${isCompact ? "text-xs px-2 py-0.5" : "text-sm"}
+      className={`
+        flex items-center gap-2 rounded-full border border-yellow-200 
+        bg-gradient-to-r from-yellow-50 to-amber-100 text-amber-700 shadow-sm 
+        transition-all hover:shadow-md cursor-default select-none
+        ${isCompact ? "px-2 py-0.5 text-xs" : "px-4 py-1.5 text-sm"}
       `}
+      title="Usuário Apoiador Oficial"
     >
-      <Heart className="h-4 w-4 fill-pink-500" />
-      {!isCompact && <span className="font-bold">Apoiador</span>}
+      {/* Ícone dourado e com preenchimento */}
+      <Crown 
+        className={`${isCompact ? "h-3 w-3" : "h-4 w-4"} fill-yellow-500 text-yellow-600`} 
+      />
+      
+      {!isCompact && (
+        <span className="font-bold tracking-wide">
+          Apoiador <span className="text-yellow-600">PRO</span>
+        </span>
+      )}
     </div>
   );
 }

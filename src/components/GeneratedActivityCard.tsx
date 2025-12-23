@@ -23,12 +23,17 @@ export function GeneratedActivityCard({
         {content.replace(/\[.*?\]/g, "")}
       </div>
 
-      <div className="pt-4 border-t border-slate-100 flex justify-end">
-        <InstagramGenerator
-          content={content}
-          theme="Atividade Educativa"
-          age="Geral"
-        />
+      <div className="pt-4 border-t border-slate-100 flex justify-end w-full sm:w-auto">
+        <div className="w-32"> {/* Container para limitar largura */}
+          {/* ✅ CORREÇÃO: Adaptando as props antigas para o novo objeto 'activity' */}
+          <InstagramGenerator
+            activity={{
+              tema: "Atividade Educativa", // Valor padrão
+              target: "Geral",             // Valor padrão
+              content: content
+            }}
+          />
+        </div>
       </div>
     </article>
   );

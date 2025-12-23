@@ -17,13 +17,18 @@ export function ActivityActionsBar({ content, theme, age }: ActivityActionsBarPr
       {/* Grupo de Download (PDF + PNG) */}
       <div className="flex flex-wrap gap-2">
         <PrintButton />
-        <InstagramGenerator content={content} theme={theme} age={age} />
+        {/* ✅ CORREÇÃO: Passando o objeto 'activity' como o componente espera agora */}
+        <InstagramGenerator 
+          activity={{
+            tema: theme,
+            target: age,
+            content: content
+          }} 
+        />
       </div>
 
       {/* Botão de Compartilhar (Vitrine) */}
       <div className="w-full sm:w-auto">
-         {/* Nota: O ShareActivity original tem um botão grande "width-full". 
-             Talvez você queira ajustar o CSS dele depois, mas aqui ele funciona. */}
          <ShareActivity activityContent={content} theme={theme} age={age} />
       </div>
 
