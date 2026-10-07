@@ -1,25 +1,17 @@
-export interface GeminiModelRaw {
-  name: string;
-  version: string;
-  displayName: string;
-  description: string;
-  inputTokenLimit: number;
-  outputTokenLimit: number;
-  supportedGenerationMethods: string[];
-}
-
-export interface GeminiListResponse {
-  models: GeminiModelRaw[];
-}
+import type { GeneratedActivity } from "@/lib/activity-format";
 
 export interface GenerationResponse {
   success: boolean;
-  data?: string;
+  /** Atividades geradas e validadas (já com o texto serializado em `content`). */
+  activities?: GeneratedActivity[];
+  /** Metadados para exibir/compartilhar os cards. */
+  tema?: string;
+  target?: string;
   error?: string;
 }
 
 export interface ActivityData {
-  id?: string;
+  id: string;
   tema: string;
   target: string; // Idade/Turma
   content: string;

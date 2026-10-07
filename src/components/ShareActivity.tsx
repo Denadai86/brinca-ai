@@ -1,11 +1,10 @@
-//src/components/ShareActivity.tsx
-
 "use client";
+//src/components/ShareActivity.tsx
 
 import { useState } from "react";
 import { Share2, Instagram, CheckCircle2, Loader2 } from "lucide-react";
 import { useAuth } from "@/auth/AuthProvider";
-import { shareActivityAction } from "@/lib/actions"; // ✅ Confirme se o caminho é esse ou @/lib/actions
+import { shareActivityAction } from "@/lib/actions";
 
 type ShareActivityProps = {
   activityContent: string;
@@ -29,27 +28,27 @@ export function ShareActivity({ activityContent, theme, age }: ShareActivityProp
 
     setLoading(true);
     
-    // Chamada à Server Action
-    const result = await shareActivityAction({
+    // O servidor descobre quem você é pelo ID token (não aceita mais authorId do navegador).
+    let result: { success: boolean; error?: string };
+    try {
+      const idToken = await user.getIdToken();
+      result = await shareActivityAction(idToken, {
         authorName: name,
-        authorId: user.uid,
-        instagramHandle: instagram.replace("@", "").trim(), // Limpa o @ se a pessoa colocar
-        
-        // 🛠️ CORREÇÃO DO ERRO DE TIPO AQUI:
-        // O TypeScript exige 'undefined' em vez de 'null' para campos opcionais (?)
-        // Se user.photoURL for null, passamos undefined.
-        authorPhoto: user.photoURL || undefined,
-        
+        instagramHandle: instagram,
         content: activityContent,
         theme,
-        age
-    });
+        age,
+      });
+    } catch (err) {
+      console.error("Erro ao publicar:", err);
+      result = { success: false, error: "Falha de conexão. Tente novamente." };
+    }
 
     if (result.success) {
       setSuccess(true);
       setIsOpen(false);
     } else {
-      alert("Erro ao publicar. Tente novamente.");
+      alert(result.error ?? "Erro ao publicar. Tente novamente.");
     }
     
     setLoading(false);

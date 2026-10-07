@@ -1,205 +1,241 @@
 "use server";
 
-import { GoogleGenerativeAI } from "@google/generative-ai";
-import { db } from "@/lib/firebase-admin"; //
+import { z } from "zod";
 import { revalidatePath } from "next/cache";
-import { FieldValue } from "firebase-admin/firestore";
-import { headers } from "next/headers";
-// Certifique-se de que o arquivo src/lib/ratelimit.ts existe conforme conversamos
-import { checkRateLimit } from "./ratelimit"; 
-import { GeminiListResponse, GeminiModelRaw, GenerationResponse, ActivityData } from "@/types/gemini";
+import { db } from "@/lib/firebase-admin";
+import { verifyUser } from "@/lib/auth-server";
+import { generateActivityPair } from "@/lib/gemini";
+import {
+  consumeRateLimit,
+  refundRateLimit,
+  getClientIp,
+  GENERATE_LIMITS,
+  SHARE_LIMIT,
+} from "@/lib/ratelimit";
+import type { ActivityData, GenerationResponse } from "@/types/gemini";
 
-// --- INICIALIZAÇÃO SEGURA ---
-const apiKey = process.env.GEMINI_API_KEY;
-if (!apiKey) {
-  throw new Error("FATAL: GEMINI_API_KEY não configurada.");
+// ⚠️ Arquivo "use server": só exporte funções async. Constantes/tipos ficam sem export.
+// Toda server action é um endpoint HTTP público: valide TUDO que chega do cliente.
+
+const ORDER_FIELDS = new Set(["createdAt", "likes"]);
+const CATEGORY_FILTERS = new Set(["maternal", "pre", "fundamental", "comunidade"]);
+const MAX_LIST_LIMIT = 24;
+
+// ---------------------------------------------------------------------------
+// 1. GERAÇÃO
+// ---------------------------------------------------------------------------
+const generationInput = z.object({
+  tema: z.string().trim().min(2).max(120),
+  idade: z.string().trim().min(1).max(60),
+  tipoIdade: z.enum(["idade", "serie"]),
+  materiais: z.string().trim().max(300),
+});
+
+function field(formData: FormData, name: string): string {
+  const value = formData.get(name);
+  return typeof value === "string" ? value : "";
 }
-const genAI = new GoogleGenerativeAI(apiKey);
 
-// --- CACHE DE MODELOS (Estratégia de Resiliência) ---
-let cachedModels: string[] | null = null;
-let lastCacheTime = 0;
-const CACHE_DURATION = 1000 * 60 * 60; // 1 hora
-
-// 1. DESCOBERTA DE MODELOS
-async function getDynamicModelList(): Promise<string[]> {
-  const now = Date.now();
-  if (cachedModels && (now - lastCacheTime < CACHE_DURATION)) {
-    return cachedModels;
-  }
-
+async function isSupporter(uid: string): Promise<boolean> {
   try {
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`
-    );
-    
-    if (!response.ok) throw new Error(`Google API Error: ${response.statusText}`);
-    
-    const data = (await response.json()) as GeminiListResponse;
-    
-    const models = data.models
-      .filter((m: GeminiModelRaw) => 
-        m.supportedGenerationMethods.includes("generateContent") &&
-        !m.name.includes("vision") && 
-        !m.name.includes("embedding") &&
-        !m.name.includes("aqa")
-      )
-      .map((m) => m.name.replace("models/", ""));
-
-    // Ordenação: Flash > Pro > Mais novos
-    const sortedModels = models.sort((a, b) => {
-      const aScore = (a.includes("flash") ? 2 : 0) + (a.includes("pro") ? 1 : 0);
-      const bScore = (b.includes("flash") ? 2 : 0) + (b.includes("pro") ? 1 : 0);
-      if (aScore !== bScore) return bScore - aScore; 
-      return b.localeCompare(a);
-    });
-
-    cachedModels = sortedModels;
-    lastCacheTime = now;
-    return sortedModels;
-  } catch (error) {
-    console.error("⚠️ Fallback de modelos ativado:", error);
-    return ["gemini-1.5-flash", "gemini-1.5-pro"];
+    const snap = await db.collection("users").doc(uid).get();
+    return snap.data()?.isSupporter === true;
+  } catch {
+    return false;
   }
 }
 
-// 2. GERAÇÃO (Com Rate Limit)
 export async function generateActivities(formData: FormData): Promise<GenerationResponse> {
+  const parsed = generationInput.safeParse({
+    tema: field(formData, "tema"),
+    idade: field(formData, "idade"),
+    tipoIdade: field(formData, "tipoIdade") === "serie" ? "serie" : "idade",
+    materiais: field(formData, "materiais"),
+  });
+
+  if (!parsed.success) {
+    return {
+      success: false,
+      error: "Opa, faltou um detalhe! Me conta o tema da aula (até 120 caracteres) e a turma (até 60), e eu preparo tudo pra você.",
+    };
+  }
+  const input = parsed.data;
+
+  let rateRef: Awaited<ReturnType<typeof consumeRateLimit>>["ref"] | null = null;
+
   try {
-    // 🛡️ Segurança: Rate Limit por IP
-    const ip = headers().get("x-forwarded-for") || "unknown";
-    const canProceed = await checkRateLimit(ip);
-    
-    if (!canProceed) {
-      return { 
-        success: false, 
-        error: "Limite de gerações excedido. Tente novamente em 1 hora ou torne-se um apoiador!" 
+    // 🛡️ Identidade e cota: logado conta por uid; anônimo, por IP.
+    const user = await verifyUser(formData.get("idToken"));
+    const supporter = user ? await isSupporter(user.uid) : false;
+    const limit = supporter
+      ? GENERATE_LIMITS.supporter
+      : user
+        ? GENERATE_LIMITS.user
+        : GENERATE_LIMITS.anon;
+
+    const rate = await consumeRateLimit({
+      scope: "generate",
+      subject: user ? { kind: "uid", value: user.uid } : { kind: "ip", value: getClientIp() },
+      limit,
+    });
+    rateRef = rate.ref;
+
+    if (!rate.allowed) {
+      const minutes = Math.max(1, Math.ceil((rate.resetAt - Date.now()) / 60_000));
+      const wait = minutes === 1 ? "1 minutinho" : `${minutes} minutos`;
+      const upsell = supporter
+        ? ""
+        : user
+          ? " Quem apoia o projeto ganha ainda mais gerações por hora."
+          : " Entrando com a sua conta, você ganha mais gerações por hora.";
+      return {
+        success: false,
+        error: `Uau, que ritmo! Você já usou as ${limit} gerações desta hora. Volte em ${wait} e a gente continua de onde parou.${upsell}`,
       };
     }
 
-    const tema = formData.get("tema") as string;
-    const idade = formData.get("idade") as string;
-    const tipoIdade = formData.get("tipoIdade") as string;
-
-    if (!tema || !idade) return { success: false, error: "Dados incompletos." };
-
-    const prompt = `
-    Atue como uma pedagoga especialista na BNCC.
-    Crie 2 (DUAS) variações de atividades lúdicas para crianças de ${idade} (${tipoIdade}), com o tema "${tema}".
-    
-    ⚠️ ESTRUTURA OBRIGATÓRIA:
-    [TITULO] (Nome criativo)
-    [MOTIVACIONAL] (Frase curta)
-    [MATERIAIS] (Bullet points)
-    [PEDAGOGICO] (Objetivo breve da BNCC)
-    [PASSO_A_PASSO] (Numerado)
-
-    Separador entre atividades: ===SEPARADOR===
-    Não adicione introduções ou conclusões fora do formato.
-    `;
-
-    const models = await getDynamicModelList();
-    let textResult = "";
-
-    // Tentativa em cascata (Fallback)
-    for (const modelName of models) {
-      try {
-        const model = genAI.getGenerativeModel({ model: modelName });
-        const result = await model.generateContent(prompt);
-        const text = result.response.text();
-        if (text) {
-          textResult = text;
-          break;
-        }
-      } catch (e) {
-        continue;
-      }
+    // 🤖 IA (saída JSON validada: não há mais parsing de texto livre)
+    let activities;
+    try {
+      activities = await generateActivityPair(input);
+    } catch (error) {
+      console.error("Erro na geração:", error);
+      await refundRateLimit(rate.ref); // a falha foi nossa: não gasta a cota da professora
+      return {
+        success: false,
+        error: "Ops! Minha varinha de ideias deu uma travadinha 🪄 Não descontei nada das suas gerações. É só tentar de novo daqui a pouquinho.",
+      };
     }
 
-    if (!textResult) throw new Error("IA indisponível no momento.");
+    // 💾 Mantém o comportamento atual (publica na vitrine). O bloco 3 muda isso para "privado por padrão".
+    try {
+      await Promise.all(
+        activities.map((a) =>
+          db.collection("public_activities").add({
+            tema: input.tema,
+            target: input.idade,
+            content: a.content,
+            categoria: a.categoria,
+            createdAt: new Date(),
+            likes: 0,
+          })
+        )
+      );
+      revalidatePath("/vitrine");
+    } catch (error) {
+      // Salvar é secundário: a professora já tem o resultado na tela.
+      console.error("Erro ao salvar atividades:", error);
+    }
 
-    // Salva automaticamente
-    const activities = textResult.split("===SEPARADOR===");
-    const savePromises = activities
-      .filter(content => content.trim().length > 50)
-      .map(async (content) => {
-        return db.collection("public_activities").add({
-          tema,
-          target: `${idade} (${tipoIdade})`,
-          content: content.trim(),
-          categoria: tipoIdade === "idade" ? "maternal" : "pre",
-          createdAt: new Date(),
-          likes: 0
-        });
-      });
-
-    await Promise.all(savePromises);
-    revalidatePath("/vitrine");
-    
-    const displayData = textResult.replace("===SEPARADOR===", "\n\n✨ --- OUTRA OPÇÃO --- ✨\n\n");
-    return { success: true, data: displayData };
-
+    return { success: true, activities, tema: input.tema, target: input.idade };
   } catch (error) {
-    console.error("Erro na geração:", error);
-    return { success: false, error: "Erro interno ao gerar atividade." };
+    console.error("Erro interno na geração:", error);
+    if (rateRef) await refundRateLimit(rateRef);
+    return { success: false, error: "Eita, algo escapuliu aqui do meu lado. Tente de novo daqui a pouquinho, tá?" };
   }
 }
 
-// 3. LEITURA (Refatorada para Filtros e Ordenação)
-export async function getPublicActivities(
-  orderByField: "createdAt" | "likes" = "createdAt", 
-  limitCount: number = 12,
-  categoryFilter: string = "todos" // ✅ NOVO PARÂMETRO
-) {
-  try {
-    let query: FirebaseFirestore.Query = db.collection("public_activities");
+// ---------------------------------------------------------------------------
+// 2. LEITURA PÚBLICA (vitrine/galeria)
+// ---------------------------------------------------------------------------
+type Row = FirebaseFirestore.DocumentData;
 
-    // Aplica filtro se não for "todos"
-    if (categoryFilter && categoryFilter !== "todos") {
+function toActivityData(id: string, data: Row): ActivityData {
+  // Lista explícita de campos: não vaza authorId nem campos internos para o cliente.
+  return {
+    id,
+    tema: data.tema ?? "",
+    target: data.target ?? "",
+    content: data.content ?? "",
+    categoria: data.categoria ?? "",
+    likes: typeof data.likes === "number" ? data.likes : 0,
+    authorName: data.authorName ?? undefined,
+    authorPhoto: data.authorPhoto ?? undefined,
+    instagramHandle: data.instagramHandle ?? undefined,
+    createdAt: data.createdAt?.toDate?.().toISOString() ?? new Date().toISOString(),
+  };
+}
+
+export async function getPublicActivities(
+  orderByField: string = "createdAt",
+  limitCount: number = 12,
+  categoryFilter: string = "todos"
+): Promise<{ success: boolean; data: ActivityData[] }> {
+  try {
+    // Esta action é chamada do browser (ShelfDisplay): não confie nos argumentos.
+    const order = ORDER_FIELDS.has(orderByField) ? orderByField : "createdAt";
+    const max = Math.min(Math.max(Math.trunc(Number(limitCount)) || 12, 1), MAX_LIST_LIMIT);
+
+    let query: FirebaseFirestore.Query = db.collection("public_activities");
+    if (CATEGORY_FILTERS.has(categoryFilter)) {
       query = query.where("categoria", "==", categoryFilter);
     }
-    
-    // ATENÇÃO: Se usar Filtro + OrderBy, o Firebase pode pedir índice composto.
-    const snapshot = await query
-      .orderBy(orderByField, "desc")
-      .limit(limitCount)
-      .get();
 
-    const data: ActivityData[] = snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...(doc.data() as Omit<ActivityData, "id">),
-      createdAt: doc.data().createdAt?.toDate?.().toISOString() || new Date().toISOString()
-    }));
-
-    return { success: true, data };
+    // Filtro + orderBy pode exigir índice composto (o erro no log traz o link para criar).
+    const snapshot = await query.orderBy(order, "desc").limit(max).get();
+    return { success: true, data: snapshot.docs.map((d) => toActivityData(d.id, d.data())) };
   } catch (error) {
-    console.error(`Erro ao buscar atividades (Filtro: ${categoryFilter}):`, error);
+    console.error(`Erro ao buscar atividades (filtro: ${categoryFilter}):`, error);
     return { success: false, data: [] };
   }
 }
 
-// 4. INTERAÇÕES SOCIAIS
-export async function shareActivityAction(data: {
-  authorName: string;
-  authorId?: string;
-  instagramHandle: string;
-  authorPhoto?: string;
-  content: string;
-  theme: string;
-  age: string;
-}) {
+// ---------------------------------------------------------------------------
+// 3. INTERAÇÕES (exigem login verificado)
+// ---------------------------------------------------------------------------
+const shareInput = z.object({
+  authorName: z.string().trim().min(1).max(60),
+  instagramHandle: z
+    .string()
+    .trim()
+    .transform((s) => s.replace(/^@/, ""))
+    .pipe(z.string().regex(/^[A-Za-z0-9._]{0,30}$/)),
+  content: z.string().trim().min(50).max(8000),
+  theme: z.string().trim().min(1).max(120),
+  age: z.string().trim().min(1).max(60),
+});
+
+export async function shareActivityAction(
+  idToken: string,
+  data: {
+    authorName: string;
+    instagramHandle: string;
+    content: string;
+    theme: string;
+    age: string;
+  }
+): Promise<{ success: boolean; error?: string }> {
+  const user = await verifyUser(idToken);
+  if (!user) return { success: false, error: "Para publicar na vitrine, entre primeiro com a sua conta, tá?" };
+
+  const parsed = shareInput.safeParse(data);
+  if (!parsed.success) {
+    return { success: false, error: "Dê uma conferida no seu nome e no @ do Instagram: tem algo que não bateu." };
+  }
+
   try {
+    const rate = await consumeRateLimit({
+      scope: "share",
+      subject: { kind: "uid", value: user.uid },
+      limit: SHARE_LIMIT,
+    });
+    if (!rate.allowed) {
+      return { success: false, error: "Calma, prô! Você publicou bastante coisa em pouco tempo. Tente de novo daqui a pouco." };
+    }
+
+    const v = parsed.data;
     await db.collection("public_activities").add({
-      tema: data.theme,
-      target: data.age,
-      content: data.content,
+      tema: v.theme,
+      target: v.age,
+      content: v.content,
       categoria: "comunidade",
       createdAt: new Date(),
       likes: 0,
-      authorName: data.authorName,
-      authorId: data.authorId || null,
-      authorPhoto: data.authorPhoto || null,
-      instagramHandle: data.instagramHandle.replace("@", "").trim(),
+      // authorId e foto vêm do token verificado, nunca do cliente.
+      authorId: user.uid,
+      authorPhoto: user.picture,
+      authorName: v.authorName,
+      instagramHandle: v.instagramHandle,
     });
 
     revalidatePath("/vitrine");
@@ -207,37 +243,79 @@ export async function shareActivityAction(data: {
     return { success: true };
   } catch (error) {
     console.error("Erro share:", error);
-    return { success: false, error: "Erro ao compartilhar" };
+    return { success: false, error: "Não consegui publicar agora. Tente de novo daqui a pouquinho." };
   }
 }
 
-export async function toggleLikeAction(activityId: string) {
+const ACTIVITY_ID = /^[A-Za-z0-9]{10,40}$/;
+
+/**
+ * Curtir é idempotente: `like: true` nunca descurte (e vice-versa). Assim, mesmo sem a UI
+ * saber se você já curtiu, um clique nunca desfaz uma curtida por engano.
+ * Uma curtida por usuário: documento em public_activities/{id}/likes/{uid}.
+ */
+export async function setLikeAction(
+  idToken: string,
+  activityId: string,
+  like: boolean
+): Promise<
+  | { success: true; liked: boolean; likes: number }
+  | { success: false; error: string }
+> {
+  const user = await verifyUser(idToken);
+  if (!user) return { success: false, error: "Entre na sua conta para curtir." };
+  if (typeof activityId !== "string" || !ACTIVITY_ID.test(activityId)) {
+    return { success: false, error: "Atividade inválida." };
+  }
+
+  const activityRef = db.collection("public_activities").doc(activityId);
+  const likeRef = activityRef.collection("likes").doc(user.uid);
+
   try {
-    await db.collection("public_activities").doc(activityId).update({
-      likes: FieldValue.increment(1)
+    const result = await db.runTransaction(async (tx) => {
+      const [activity, existing] = await Promise.all([tx.get(activityRef), tx.get(likeRef)]);
+      if (!activity.exists) throw new Error("not-found");
+
+      const current = typeof activity.data()?.likes === "number" ? activity.data()!.likes : 0;
+
+      if (like && !existing.exists) {
+        tx.set(likeRef, { createdAt: new Date() });
+        tx.update(activityRef, { likes: current + 1 });
+        return { liked: true, likes: current + 1 };
+      }
+      if (!like && existing.exists) {
+        tx.delete(likeRef);
+        tx.update(activityRef, { likes: Math.max(0, current - 1) });
+        return { liked: false, likes: Math.max(0, current - 1) };
+      }
+      return { liked: existing.exists, likes: current }; // nada a mudar
     });
-    return { success: true };
+    return { success: true, ...result };
   } catch (error) {
-    return { success: false };
+    console.error("Erro ao curtir:", error);
+    return { success: false, error: "Não foi possível curtir agora." };
   }
 }
 
-// 5. DASHBOARD USER
-export async function getUserActivities(userId: string) {
+// ---------------------------------------------------------------------------
+// 4. DASHBOARD DO USUÁRIO
+// ---------------------------------------------------------------------------
+export async function getUserActivities(
+  idToken: string
+): Promise<{ success: boolean; data: ActivityData[] }> {
+  // O uid vem do token verificado — antes, qualquer um podia passar o uid de outra pessoa.
+  const user = await verifyUser(idToken);
+  if (!user) return { success: false, data: [] };
+
   try {
-    const snapshot = await db.collection("public_activities")
-      .where("authorId", "==", userId)
+    const snapshot = await db
+      .collection("public_activities")
+      .where("authorId", "==", user.uid)
       .orderBy("createdAt", "desc")
       .limit(20)
       .get();
 
-    const data = snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...(doc.data() as any),
-      createdAt: doc.data().createdAt?.toDate().toISOString()
-    }));
-
-    return { success: true, data };
+    return { success: true, data: snapshot.docs.map((d) => toActivityData(d.id, d.data())) };
   } catch (error) {
     console.error("Erro getUserActivities:", error);
     return { success: false, data: [] };

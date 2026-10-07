@@ -47,9 +47,9 @@ export default function RootLayout({
         <AuthProvider>
           <AnimatedHeader />
 
-          <main className="relative pt-16 pb-24 px-4 max-w-5xl mx-auto">
+          <div className="relative pt-16 pb-24 px-4 max-w-5xl mx-auto">
             {children}
-          </main>
+          </div>
         </AuthProvider>
 
         <Footer /> {/* ✅ Adicione o Footer aqui */}  

@@ -3,6 +3,9 @@ import { HomeControlPanel } from "@/components/HomeControlPanel";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 
+// A server action de geração roda nesta rota: dá folga para a IA (2 modelos × 25 s de timeout).
+export const maxDuration = 60;
+
 export default function Home() {
   return (
     <main className="flex min-h-screen flex-col bg-slate-50 overflow-x-hidden">

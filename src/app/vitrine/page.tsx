@@ -15,8 +15,8 @@ export default async function VitrinePage() {
   const { data: recentActivities } = await getPublicActivities("createdAt", 12);
 
   // Remove duplicatas (caso um top 3 também esteja nos recentes)
-  const topIds = new Set(topActivities?.map((a: any) => a.id));
-  const uniqueRecent = recentActivities?.filter((a: any) => !topIds.has(a.id)) || [];
+  const topIds = new Set(topActivities?.map((a) => a.id));
+  const uniqueRecent = recentActivities?.filter((a) => !topIds.has(a.id)) || [];
 
   return (
     <main className="min-h-screen bg-slate-50 pb-20">
@@ -41,14 +41,8 @@ export default async function VitrinePage() {
               Destaques da Comunidade
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-              {topActivities.map((activity: any, index: number) => (
-                <div key={activity.id} className="relative">
-                   {/* Badge de Pódio */}
-                   <div className="absolute -top-4 -left-4 z-10 bg-yellow-400 text-yellow-900 font-black w-10 h-10 flex items-center justify-center rounded-full shadow-lg border-2 border-white text-lg transform -rotate-12">
-                     #{index + 1}
-                   </div>
-                   <ActivityCard activity={activity} index={index} />
-                </div>
+              {topActivities.map((activity, index) => (
+                <ActivityCard key={activity.id} activity={activity} rank={index + 1} />
               ))}
             </div>
           </div>
@@ -65,8 +59,8 @@ export default async function VitrinePage() {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {uniqueRecent.map((activity: any, index: number) => (
-              <ActivityCard key={activity.id} activity={activity} index={index} />
+            {uniqueRecent.map((activity) => (
+              <ActivityCard key={activity.id} activity={activity} />
             ))}
           </div>
         )}

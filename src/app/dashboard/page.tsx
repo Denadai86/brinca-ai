@@ -1,5 +1,5 @@
 "use client"; // 1. Obrigatório ser a primeira linha
-
+//src/app/dashboard/page.tsx
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation"; // Melhor que window.location
@@ -16,7 +16,7 @@ export default function DashboardPage() {
   const router = useRouter();
   
   // Estado local
-  const [activities, setActivities] = useState<any[]>([]); // Use ActivityData[] se tiver os tipos
+  const [activities, setActivities] = useState<ActivityData[]>([]);
   const [loadingData, setLoadingData] = useState(true);
 
   useEffect(() => {
@@ -28,12 +28,16 @@ export default function DashboardPage() {
 
     // 2. Se tem usuário, busca os dados
     if (user) {
-      getUserActivities(user.uid)
+      // O servidor identifica o dono pelo ID token (antes aceitava qualquer uid).
+      user
+        .getIdToken()
+        .then((token) => getUserActivities(token))
         .then((res) => {
           if (res.success && res.data) {
             setActivities(res.data);
           }
         })
+        .catch((err) => console.error("Erro ao carregar o painel:", err))
         .finally(() => setLoadingData(false));
     }
   }, [user, loading, router]);
@@ -80,8 +84,8 @@ export default function DashboardPage() {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {activities.map((act, idx) => (
-              <ActivityCard key={act.id} activity={act} index={idx} />
+            {activities.map((act) => (
+              <ActivityCard key={act.id} activity={act} />
             ))}
           </div>
         )}
