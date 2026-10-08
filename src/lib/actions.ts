@@ -75,7 +75,7 @@ export async function generateActivities(formData: FormData): Promise<Generation
 
     const rate = await consumeRateLimit({
       scope: "generate",
-      subject: user ? { kind: "uid", value: user.uid } : { kind: "ip", value: getClientIp() },
+      subject: user ? { kind: "uid", value: user.uid } : { kind: "ip", value: await getClientIp() },
       limit,
     });
     rateRef = rate.ref;

@@ -1,5 +1,6 @@
-// src/auth/AuthProvider.tsx
 "use client";
+
+// src/auth/AuthProvider.tsx
 
 import {
   GoogleAuthProvider,

@@ -1,5 +1,6 @@
 onlyBuiltDependencies:
   - '@firebase/util'
+  - '@google/genai'
   - core-js
   - protobufjs
   - unrs-resolver

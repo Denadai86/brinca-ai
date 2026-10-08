@@ -23,8 +23,8 @@ type Subject = { kind: "uid" | "ip"; value: string };
  * IP do cliente. No Vercel o x-forwarded-for é definido pela plataforma; ele pode
  * trazer uma lista ("cliente, proxy1, proxy2"), e o cliente real é o primeiro item.
  */
-export function getClientIp(): string {
-  const h = headers();
+export async function getClientIp(): Promise<string> {
+  const h = await headers();
   const forwarded = h.get("x-forwarded-for");
   const ip = forwarded?.split(",")[0]?.trim() || h.get("x-real-ip")?.trim() || "";
   return ip || "unknown";
